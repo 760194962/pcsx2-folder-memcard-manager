@@ -9,7 +9,7 @@ import sys
 from .foldercard import META_PREFIX
 from .importer import SaveExists
 
-SAME, DIFF, ONLY = "same", "diff", "only"
+SAME, DIFF, ONLY, UNREADABLE = "same", "diff", "only", "unreadable"
 
 
 def _save_path(card_dir, host_name):
@@ -107,13 +107,18 @@ def digest(save):
 
 
 def compare(digests_a, digests_b):
-    """对比两张卡。参数是 {存档名: 指纹}，返回两个 {存档名: SAME/DIFF/ONLY}。"""
+    """对比两张卡。参数是 {存档名: 指纹}，返回两个 {存档名: SAME/DIFF/ONLY/UNREADABLE}。
+
+    指纹为 None 表示这个存档读不了（例如文件被 PCSX2 占用）：两边都有时标为 UNREADABLE，
+    只有一边有时仍然是 ONLY。"""
     st_a, st_b = {}, {}
     for name in digests_a.keys() | digests_b.keys():
         if name not in digests_b:
             st_a[name] = ONLY
         elif name not in digests_a:
             st_b[name] = ONLY
+        elif digests_a[name] is None or digests_b[name] is None:
+            st_a[name] = st_b[name] = UNREADABLE
         else:
             st_a[name] = st_b[name] = SAME if digests_a[name] == digests_b[name] else DIFF
     return st_a, st_b

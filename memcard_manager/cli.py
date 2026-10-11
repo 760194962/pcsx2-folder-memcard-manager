@@ -7,7 +7,6 @@ from .cardops import pcsx2_running
 from .cards import open_card
 from .foldercard import looks_like_folder_card
 from .importer import SaveExists
-from .region import region
 from .saveformats import EXPORT_FORMATS, read_save_file
 
 
@@ -51,12 +50,10 @@ def cli(args):
         return 1
 
     if not args.out and not args.all and not args.save:
-        print("%-26s %-6s %6s  %-16s  %s" % ("Directory", "Region", "Size", "Modified",
-                                              "Description"))
+        print("%-26s %6s  %-16s  %s" % ("Directory", "Size", "Modified", "Description"))
         for s in saves:
-            print("%-26s %-6s %6s  %-16s  %s" % (s.display_name, region(s.display_name),
-                                               fmt_kb(s.card_size),
-                                               s.modified_str, s.description))
+            print("%-26s %6s  %-16s  %s" % (s.display_name, fmt_kb(s.card_size),
+                                            s.modified_str, s.description))
         if card.free is not None:
             print("\n剩余空间: %s" % fmt_kb(card.free))
         print("\n加 -o 输出目录 并用 --all 或 -s 名字 来导出（-f max 导出为 MAX）。")

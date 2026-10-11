@@ -14,18 +14,17 @@ from .cards import IMAGE_EXTS, open_card
 from .foldercard import looks_like_folder_card
 from .importer import SaveExists
 from .ps2dirent import unpack_time
-from .region import region
 from .saveformats import EXPORT_FORMATS, IMPORT_EXTS, read_save_file
 
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".pcsx2_memcard_manager.json")
 
-COLS = ("name", "region", "size", "modified", "desc", "cmp")
-TITLES = {"name": "Directory", "region": "Region", "size": "Size", "modified": "Modified",
+COLS = ("name", "size", "modified", "desc", "cmp")
+TITLES = {"name": "Directory", "size": "Size", "modified": "Modified",
           "desc": "Description", "cmp": "对比"}
-WIDTHS = {"name": 165, "region": 58, "size": 55, "modified": 115, "desc": 150, "cmp": 55}
-REGION_ORDER = {r: i for i, r in enumerate(("Japan", "USA", "Europe", "Asia", "Korea", "China"))}
-CMP_TEXT = {cardops.SAME: "相同", cardops.DIFF: "不同", cardops.ONLY: "仅此卡"}
-CMP_ORDER = {cardops.ONLY: 0, cardops.DIFF: 1, cardops.SAME: 2}
+WIDTHS = {"name": 175, "size": 55, "modified": 115, "desc": 160, "cmp": 55}
+CMP_TEXT = {cardops.SAME: "相同", cardops.DIFF: "不同", cardops.ONLY: "仅此卡",
+            cardops.UNREADABLE: "无法读取"}
+CMP_ORDER = {cardops.ONLY: 0, cardops.DIFF: 1, cardops.UNREADABLE: 2, cardops.SAME: 3}
 
 
 def load_config():
@@ -126,6 +125,7 @@ def main():
                                  stretch=c == "desc")
             self.tree.tag_configure(cardops.ONLY, background="#e3f4e6")
             self.tree.tag_configure(cardops.DIFF, background="#fff1d6")
+            self.tree.tag_configure(cardops.UNREADABLE, foreground="#a33")
             self.tree.bind("<<TreeviewSelect>>", lambda e: update_buttons())
             self.tree.bind("<Double-1>", lambda e: self.open_folder())
             self.tree.bind("<Button-3>", self.context_menu)
@@ -193,14 +193,15 @@ def main():
             self.frame.config(text="插槽 %s — %s" % (self.slot, card.kind_label))
             cfg["card_" + self.slot.lower()] = path
             save_config(cfg)
-            self.rows = [(s.display_name, region(s.display_name), "%dK" % (s.card_size // 1024),
-                          s.modified_str, s.description) for s in self.saves]
+            self.rows = [(s.display_name, "%dK" % (s.card_size // 1024), s.modified_str,
+                          s.description) for s in self.saves]
             for i, row in enumerate(self.rows):
                 self.tree.insert("", "end", iid=str(i), values=row + ("",))
             used = sum(s.card_size for s in self.saves) // 1024
             text = "%d 个存档，已用 %dK" % (len(self.saves), used)
             if card.free is not None:
                 text += "，剩余 %dK" % (card.free // 1024)
+            self.info_text = text
             self.info.config(text=text)
             self.apply_sort()
             if warn and card.kind == "folder" and not looks_like_folder_card(path):
@@ -211,12 +212,18 @@ def main():
                 refresh_compare()
             update_buttons()
 
-        def set_status(self, status):
+        def set_status(self, status, note=""):
             self.status = status
             for i, s in enumerate(self.saves):
                 st = status.get(s.name)
                 self.tree.set(str(i), "cmp", CMP_TEXT.get(st, ""))
-                self.tree.item(str(i), tags=(st,) if st in (cardops.ONLY, cardops.DIFF) else ())
+                self.tree.item(str(i), tags=(st,) if st in (cardops.ONLY, cardops.DIFF,
+                                                            cardops.UNREADABLE) else ())
+            bad = sum(1 for st in status.values() if st == cardops.UNREADABLE)
+            if bad and not note:
+                note = "%d 个存档无法读取，没能对比（文件可能被 PCSX2 占用）" % bad
+            if self.loaded:
+                self.info.config(text=self.info_text + ("　｜　" + note if note else ""))
             if self.sort_col == "cmp":
                 self.apply_sort()
 
@@ -229,10 +236,7 @@ def main():
             if col == "modified":
                 return lambda i: unpack_time(self.saves[i].modified)
             if col == "desc":
-                return lambda i: self.rows[i][4].lower()
-            if col == "region":
-                return lambda i: (REGION_ORDER.get(self.rows[i][1], len(REGION_ORDER)),
-                                  self.saves[i].display_name.lower())
+                return lambda i: self.rows[i][3].lower()
             return lambda i: CMP_ORDER.get(self.status.get(self.saves[i].name), 3)
 
         def apply_sort(self):
@@ -445,16 +449,18 @@ def main():
         tk.Label(legend, text=CMP_TEXT[st], bg=color, width=8).pack(pady=2)
 
     def refresh_compare():
+        note = ""
         if pane_a.loaded and pane_b.loaded:
             try:
                 st_a, st_b = cardops.compare(pane_a.cardobj.digests(pane_a.saves),
                                              pane_b.cardobj.digests(pane_b.saves))
-            except Exception:  # noqa
+            except Exception as e:  # noqa
                 st_a, st_b = {}, {}
+                note = "对比失败: %s" % e
         else:
             st_a = st_b = {}
-        pane_a.set_status(st_a)
-        pane_b.set_status(st_b)
+        pane_a.set_status(st_a, note)
+        pane_b.set_status(st_b, note)
 
     def update_buttons():
         for p in (pane_a, pane_b):

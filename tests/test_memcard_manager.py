@@ -14,7 +14,6 @@ from mymcplusplus import ps2mc  # noqa: E402
 
 from memcard_manager import cardops, iconsys  # noqa: E402
 from memcard_manager.cards import FolderCard, ImageCard, open_card  # noqa: E402
-from memcard_manager.region import region, serial  # noqa: E402
 from memcard_manager.saveformats import read_save_file  # noqa: E402
 from memcard_manager.foldercard import list_saves, read_save  # noqa: E402
 from memcard_manager.importer import SaveExists, import_save  # noqa: E402
@@ -139,31 +138,6 @@ class TestYaml(unittest.TestCase):
     def test_empty_and_missing(self):
         self.assertEqual(self._parse(""), {})
         self.assertEqual(parse_index("/nonexistent/_pcsx2_index"), {})
-
-
-class TestRegion(unittest.TestCase):
-    def test_by_serial(self):
-        cases = {
-            "BASLUS-20209JEREMY": ("USA", "SLUS-20209"),
-            "BESCES-52530": ("Europe", "SCES-52530"),
-            "BISLPM-66168SAVE": ("Japan", "SLPM-66168"),
-            "BISCPS-15017LOG000": ("Japan", "SCPS-15017"),
-            "BISCAJ-20144-0": ("Asia", "SCAJ-20144"),
-            "BKSCKA-20010DATA": ("Korea", "SCKA-20010"),
-            "BCSCCS-60002GAMEDATA": ("China", "SCCS-60002"),
-            # 国行 ICO 的存档用的是 BI，但编号 SCCS 说明是国行（China）
-            "BISCCS-40005ico": ("China", "SCCS-40005"),
-        }
-        for name, (r, ser) in cases.items():
-            self.assertEqual((region(name), serial(name)), (r, ser), name)
-
-    def test_fallback_and_unknown(self):
-        self.assertEqual(region("BADATA-SYSTEM"), "USA")
-        self.assertEqual(region("BIDATA-SYSTEM"), "Japan")
-        self.assertEqual(region("BISLPS-25136"), "Japan")
-        self.assertEqual(region("BEXYZW-12345"), "Europe")   # 认不出的编号，退回区域字母
-        self.assertEqual(region("SAVEDATA"), "")
-        self.assertEqual(serial("BADATA-SYSTEM"), "")
 
 
 class TestIconSys(unittest.TestCase):
@@ -386,6 +360,31 @@ class TestCardOps(CardTestCase):
                                 b"BISLPM-66168SAVE": cardops.DIFF,
                                 b"BASLUS-99999ONLYB": cardops.ONLY})
 
+
+    def test_compare_unreadable(self):
+        # 读不了的存档（指纹为 None）单独标出来，不影响其他存档
+        st_a, st_b = cardops.compare({b"X": "1", b"Y": None, b"Z": None, b"W": "2"},
+                                     {b"X": "1", b"Y": "3", b"W": "9"})
+        self.assertEqual(st_a, {b"X": cardops.SAME, b"Y": cardops.UNREADABLE,
+                                b"Z": cardops.ONLY, b"W": cardops.DIFF})
+        self.assertEqual(st_b, {b"X": cardops.SAME, b"Y": cardops.UNREADABLE,
+                                b"W": cardops.DIFF})
+
+    @unittest.skipUnless(sys.platform == "win32", "用 Windows 的独占打开模拟 PCSX2 锁文件")
+    def test_digests_locked_file(self):
+        import msvcrt
+        path = os.path.join(self.card, "BISLPM-66168SAVE", "SAVE.BIN")
+        fd = os.open(path, os.O_RDWR)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, os.path.getsize(path))
+            card = FolderCard(self.card)
+            d = card.digests(card.list_saves())
+        finally:
+            os.lseek(fd, 0, 0)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, os.path.getsize(path))
+            os.close(fd)
+        self.assertIsNone(d[b"BISLPM-66168SAVE"])
+        self.assertIsNotNone(d[b"BASLUS-20209JEREMY"])
 
 def make_image(path, ecc=True):
     """用 MyMC++ 格式化一张空的 8MB 记忆卡镜像。ecc=False 相当于 PS3 以外的无 ECC 镜像。"""

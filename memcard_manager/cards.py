@@ -68,7 +68,14 @@ class FolderCard:
         return write_save_file(root, files, out_dir, fmt, save.display_name)
 
     def digests(self, saves):
-        return {s.name: cardops.digest(s) for s in saves}
+        """{存档名: 指纹}；读不了的存档（例如文件被 PCSX2 锁住）指纹为 None。"""
+        out = {}
+        for s in saves:
+            try:
+                out[s.name] = cardops.digest(s)
+            except OSError:
+                out[s.name] = None
+        return out
 
     def folder_of(self, save=None):
         return save.host_dir if save else self.path
@@ -199,9 +206,12 @@ class ImageCard:
         out = {}
         with self._mc() as mc:
             for s in saves:
-                sf = mc.export_save_file(self._path(s))
-                out[s.name] = cardops.digest_files(
-                    (sf.get_file(i)[0][8], sf.get_file(i)[1]) for i in range(len(sf)))
+                try:
+                    sf = mc.export_save_file(self._path(s))
+                    out[s.name] = cardops.digest_files(
+                        (sf.get_file(i)[0][8], sf.get_file(i)[1]) for i in range(len(sf)))
+                except (OSError, ps2mc.error):
+                    out[s.name] = None  # 存档损坏等，单独标出来，不影响其他存档的对比
         return out
 
     def folder_of(self, save=None):
