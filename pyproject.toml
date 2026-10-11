@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pcsx2-folder-memcard-manager"
+version = "0.1.0"
+description = "Unofficial tool to browse PCSX2 Folder memory cards and export saves as .psu"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+pcsx2-memcard = "memcard_manager.cli:main"
+
+[project.gui-scripts]
+pcsx2-memcard-gui = "memcard_manager.gui:main"
+
+[tool.setuptools]
+packages = ["memcard_manager"]
