@@ -9,7 +9,7 @@ description = "Unofficial tool to browse PCSX2 Folder memory cards and import/ex
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
 requires-python = ">=3.8"
-dependencies = ["mymcplusplus>=3.2.0"]
+dependencies = ["mymcplusplus>=3.2.0", "numpy"]
 
 [project.scripts]
 pcsx2-memcard = "memcard_manager.cli:main"

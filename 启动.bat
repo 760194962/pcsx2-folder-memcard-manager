@@ -18,12 +18,12 @@ pause
 exit /b 1
 
 :check
-"%PY%" -c "import mymcplusplus" >nul 2>nul
+"%PY%" -c "import mymcplusplus, numpy" >nul 2>nul
 if errorlevel 1 (
-    echo Installing dependency mymcplusplus ...
-    "%PY%" -m pip install --user mymcplusplus
+    echo Installing dependencies mymcplusplus, numpy ...
+    "%PY%" -m pip install --user mymcplusplus numpy
     if errorlevel 1 (
-        echo Failed to install mymcplusplus.
+        echo Failed to install dependencies.
         pause
         exit /b 1
     )

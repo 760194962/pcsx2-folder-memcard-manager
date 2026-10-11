@@ -77,6 +77,19 @@ class FolderCard:
                 out[s.name] = None
         return out
 
+    def read_icon(self, save):
+        """(icon.sys 内容, 图标 .ico 内容)，没有时对应位置为 None。"""
+        by_name = {f.name.lower(): f for f in save.files}
+
+        def read(name):
+            f = by_name.get(name.lower()) if name else None
+            if f is None:
+                return None
+            with open(f.host_path, "rb") as fp:
+                return fp.read()
+        icon_sys = read(b"icon.sys")
+        return icon_sys, read(iconsys.icon_file_name(icon_sys))
+
     def folder_of(self, save=None):
         return save.host_dir if save else self.path
 
@@ -213,6 +226,30 @@ class ImageCard:
                 except (OSError, ps2mc.error):
                     out[s.name] = None  # 存档损坏等，单独标出来，不影响其他存档的对比
         return out
+
+    def read_icon(self, save):
+        """(icon.sys 内容, 图标 .ico 内容)，没有时对应位置为 None。"""
+        with self._mc() as mc:
+            names = {}
+            d = mc.dir_open(self._path(save))
+            try:
+                for ent in d:
+                    if ps2mc_dir.mode_is_file(ent[0]):
+                        names[ent[8].lower()] = ent[8]
+            finally:
+                d.close()
+
+            def read(name):
+                real = names.get(name.lower()) if name else None
+                if real is None:
+                    return None
+                f = mc.open(self._path(save) + "/" + real.decode("ascii", "replace"), "rb")
+                try:
+                    return f.read()
+                finally:
+                    f.close()
+            icon_sys = read(b"icon.sys")
+            return icon_sys, read(iconsys.icon_file_name(icon_sys))
 
     def folder_of(self, save=None):
         return os.path.dirname(os.path.abspath(self.path))

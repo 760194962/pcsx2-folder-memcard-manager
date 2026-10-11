@@ -1,3 +1,5 @@
+import importlib.util
+import math
 import os
 import random
 import re
@@ -138,6 +140,116 @@ class TestYaml(unittest.TestCase):
     def test_empty_and_missing(self):
         self.assertEqual(self._parse(""), {})
         self.assertEqual(parse_index("/nonexistent/_pcsx2_index"), {})
+
+
+def make_ico(shapes, color=(255, 0, 0), texture=None, frames=(), anim_speed=1.0):
+    """拼一个最小的 PS2 图标：一个三角形，shapes 是每个变形形状的 3 个顶点坐标。
+
+    frames: [(shape_id, [(time, value), ...])]，用来做变形动画。"""
+    tex_type = 0x04 if texture is not None else 0
+    out = struct.pack("<IIIII", 0x010000, len(shapes), tex_type, 1, 3)
+    uvs = ((0, 0), (4096, 0), (0, 4096))
+    for v in range(3):
+        for shape in shapes:
+            out += struct.pack("<hhhH", *shape[v], 0)
+        # 法线朝向相机（PS2 坐标里 Z 取反）
+        out += struct.pack("<hhhHhhBBBB", 0, 0, -4096, 0, *uvs[v], *color, 0x80)
+    frame_length = 10 if frames else 0
+    out += struct.pack("<IIfII", 1, frame_length, anim_speed, 0, len(frames))
+    for shape_id, keys in frames:
+        out += struct.pack("<IIII", shape_id, len(keys) + 1, 0, 0)  # 格式里存的是 关键帧数 + 1
+        for t, v in keys:
+            out += struct.pack("<ff", t, v)
+    if texture is not None:
+        out += texture
+    return out
+
+
+def make_icon_sys_lit(icon_name=b"icon.ico", bg=(0, 0, 0)):
+    """带背景色、环境光为 1 的 icon.sys。"""
+    return iconsys._STRUCT.pack(
+        b"PS2D", 0, 0, 0, 0x80,              # 0x0C: bg_alpha = 0x80（不透明）
+        *([bg[0], bg[1], bg[2], 0] * 4), *([0.0] * 12),
+        *([0.0] * 12), 1.0, 1.0, 1.0, 1.0,
+        "テスト".encode("cp932"), icon_name, b"", b"", b"")
+
+
+@unittest.skipUnless(importlib.util.find_spec("numpy"), "图标预览需要 numpy")
+class TestIconRender(unittest.TestCase):
+    # 一个盖住画面中心的大三角形（PS2 坐标：Y 向下，模型原点在脚下，整体高约 5）
+    TRI = ((-4000, -4000, 0), (12000, -4000, 0), (-4000, -16000, 0))
+
+    def model(self, **kw):
+        from memcard_manager.iconrender import IconModel
+        return IconModel(make_ico([self.TRI], **kw), make_icon_sys_lit(bg=(0, 255, 0)))   # 背景色按 0-255
+
+    def test_vertex_color_and_background(self):
+        img = self.model(color=(255, 0, 0)).render(64)
+        self.assertEqual(img.shape, (64, 64, 3))
+        self.assertEqual(tuple(img[32, 32]), (255, 0, 0))     # 三角形：顶点颜色 × 环境光
+        self.assertEqual(tuple(img[63, 63]), (0, 255, 0))     # 角落：icon.sys 背景色
+
+    def test_backface_culled(self):
+        # 转 180° 看到的是背面，被剔除，只剩背景
+        img = self.model().render(64, yaw=math.pi)
+        self.assertEqual(tuple(img[32, 32]), (0, 255, 0))
+
+    def test_texture(self):
+        # 128x128 的 1-5-5-5 贴图，全蓝（B=31），乘上白色顶点颜色
+        tex = struct.pack("<H", 31 << 10) * (128 * 128)
+        img = self.model(color=(255, 255, 255), texture=tex).render(64)
+        self.assertEqual(tuple(img[32, 32]), (0, 0, 255))
+
+    def test_morph_animation(self):
+        from memcard_manager.iconrender import IconModel
+        moved = tuple((x + 20000, y, z) for x, y, z in self.TRI)   # 形状 1 移出画面中心
+        ico = make_ico([self.TRI, moved],
+                       frames=[(0, [(0.0, 1.0), (5.0, 0.0)]), (1, [(0.0, 0.0), (5.0, 1.0)])])
+        m = IconModel(ico, make_icon_sys_lit())
+        self.assertTrue(m.animated)
+        self.assertEqual(tuple(m.render(64, seconds=0.0)[32, 32]), (255, 0, 0))
+        # 每秒 60 帧 × anim_speed 1.0：第 5 帧（5/60 秒）完全变成形状 1，中心只剩背景
+        self.assertEqual(tuple(m.render(64, seconds=5 / 60)[32, 32]), (0, 0, 0))
+        # 动画循环：第 10 帧回到开头
+        self.assertEqual(tuple(m.render(64, seconds=10 / 60)[32, 32]), (255, 0, 0))
+        # anim_speed 0.5：同样的画面要多花一倍时间
+        half = IconModel(make_ico([self.TRI, moved], anim_speed=0.5,
+                                  frames=[(0, [(0.0, 1.0), (5.0, 0.0)]),
+                                          (1, [(0.0, 0.0), (5.0, 1.0)])]),
+                         make_icon_sys_lit())
+        self.assertEqual(tuple(half.render(64, seconds=10 / 60)[32, 32]), (0, 0, 0))     # 第 5 帧
+        self.assertEqual(tuple(half.render(64, seconds=20 / 60)[32, 32]), (255, 0, 0))   # 第 10 帧，回到开头
+
+    def test_bad_icons(self):
+        from memcard_manager.iconrender import IconError, IconModel
+        for data in (None, b"", b"garbage" * 10):
+            with self.assertRaises(IconError):
+                IconModel(data)
+
+    def test_icon_file_name(self):
+        self.assertEqual(iconsys.icon_file_name(make_icon_sys_lit(b"face.ico")), b"face.ico")
+        self.assertIsNone(iconsys.icon_file_name(b"\0" * 964))
+
+    def test_read_icon_folder_and_image(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            card = os.path.join(tmp, "Folder.ps2")
+            d = os.path.join(card, "BASLUS-11111ICON")
+            os.makedirs(d)
+            wr(os.path.join(d, "icon.sys"), make_icon_sys_lit(b"Face.ICO"))
+            wr(os.path.join(d, "face.ico"), make_ico([self.TRI]))   # 大小写不同也要找到
+            folder = open_card(card)
+            s = folder.list_saves()[0]
+            isys, ico = folder.read_icon(s)
+            self.assertEqual(ico, make_ico([self.TRI]))
+
+            img_path = os.path.join(tmp, "card.ps2")
+            make_image(img_path)
+            img = open_card(img_path)
+            img.copy_from(folder, s)
+            self.assertEqual(img.read_icon(img.list_saves()[0]), (isys, ico))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 class TestIconSys(unittest.TestCase):

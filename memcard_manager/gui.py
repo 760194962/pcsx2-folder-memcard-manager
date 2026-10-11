@@ -5,9 +5,11 @@
 """
 
 import json
+import math
 import os
 import subprocess
 import sys
+import time
 
 from . import cardops
 from .cards import IMAGE_EXTS, open_card
@@ -15,6 +17,20 @@ from .foldercard import looks_like_folder_card
 from .importer import SaveExists
 from .ps2dirent import unpack_time
 from .saveformats import EXPORT_FORMATS, IMPORT_EXTS, read_save_file
+
+try:  # 图标预览需要 numpy；没有也能用其他功能
+    from . import iconrender
+    from .iconrender import IconError, IconModel
+except ImportError:
+    iconrender = None
+
+    class IconError(Exception):
+        pass
+
+PREVIEW_SIZE = 128          # 预览区边长（像素）
+ICON_FRAME_MS = 8           # 尽量接近 60 帧/秒（Windows 计时器精度约 15.6ms）
+# 自动旋转：PS2 浏览器实测每秒 30°、12 秒一圈，方向是 左侧面 → 背面 → 右侧面 → 正面
+ICON_SPIN = -math.radians(30.0)   # 弧度/秒
 
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".pcsx2_memcard_manager.json")
 
@@ -126,9 +142,28 @@ def main():
             self.tree.tag_configure(cardops.ONLY, background="#e3f4e6")
             self.tree.tag_configure(cardops.DIFF, background="#fff1d6")
             self.tree.tag_configure(cardops.UNREADABLE, foreground="#a33")
-            self.tree.bind("<<TreeviewSelect>>", lambda e: update_buttons())
+            self.tree.bind("<<TreeviewSelect>>", self.on_select)
             self.tree.bind("<Double-1>", lambda e: self.open_folder())
             self.tree.bind("<Button-3>", self.context_menu)
+
+            # 图标预览：选中存档后播放它的 3D 动画图标，可以用鼠标拖动旋转
+            prev = ttk.Frame(self.frame)
+            prev.pack(fill="x", pady=(0, 6))
+            self.preview = tk.Label(prev, width=PREVIEW_SIZE, height=PREVIEW_SIZE,
+                                    bg="#202020", cursor="hand2")
+            self.preview.pack(side="left")
+            self.preview.bind("<ButtonPress-1>", self._drag_start)
+            self.preview.bind("<B1-Motion>", self._drag)
+            self.preview_info = ttk.Label(prev, text="", justify="left", anchor="nw")
+            self.preview_info.pack(side="left", fill="both", expand=True, padx=(10, 0))
+            self.icon_cache = {}    # 存档名 -> IconModel 或 错误信息
+            self.icon_model = None
+            self.icon_start = time.time()
+            self.yaw_offset = 0.0
+            self._drag_x = 0
+            self._select_job = None
+            self._photo = None
+            self.show_icon(None)
 
             self.info = ttk.Label(self.frame, text="未打开")
             self.info.pack(fill="x")
@@ -172,6 +207,8 @@ def main():
         def load(self, warn=False, compare=True):
             path = self.card
             self.cardobj, self.saves, self.rows = None, [], []
+            self.icon_cache = {}
+            self.show_icon(None)
             self.tree.delete(*self.tree.get_children())
             self.frame.config(text="插槽 " + self.slot)
             if not path:
@@ -211,6 +248,82 @@ def main():
             if compare:
                 refresh_compare()
             update_buttons()
+
+        # ---- 图标预览 ----
+        def on_select(self, _event=None):
+            update_buttons()
+            # 连续点选/拖选时只加载最后一次
+            if self._select_job is not None:
+                self.tree.after_cancel(self._select_job)
+            self._select_job = self.tree.after(80, self._load_selected_icon)
+
+        def _load_selected_icon(self):
+            self._select_job = None
+            focus = self.tree.focus()
+            sel = self.tree.selection()
+            iid = focus if focus in sel else (sel[0] if sel else None)
+            if iid is None or not self.loaded:
+                self.show_icon(None)
+                return
+            save = self.saves[int(iid)]
+            model = self.icon_cache.get(save.name)
+            if model is None:
+                try:
+                    if iconrender is None:
+                        raise IconError("需要 numpy 才能预览图标（pip install numpy）")
+                    icon_sys, ico = self.cardobj.read_icon(save)
+                    model = IconModel(ico, icon_sys)
+                except Exception as e:  # noqa
+                    model = str(e)
+                self.icon_cache[save.name] = model
+            self.show_icon(save, model)
+
+        def show_icon(self, save, model=None):
+            if save is None:
+                self.icon_model = None
+                self._set_photo(None)
+                self.preview_info.config(text="选中存档即可预览它的 3D 图标" if self.loaded else "")
+                return
+            lines = [save.description or "（无标题）", save.display_name,
+                     "%s　%dK" % (save.modified_str, save.card_size // 1024)]
+            if isinstance(model, str):
+                self.icon_model = None
+                self._set_photo(None)
+                lines.append("图标: " + model)
+            else:
+                self.icon_model = model
+                self.icon_start = time.time()
+                self.yaw_offset = 0.0
+                if model.animated:
+                    lines.append("动画图标")
+                self.render_icon()
+            self.preview_info.config(text="\n".join(lines))
+
+        def _set_photo(self, rgb):
+            if rgb is None:
+                self._photo = tk.PhotoImage(width=PREVIEW_SIZE, height=PREVIEW_SIZE)
+            else:
+                self._photo = tk.PhotoImage(data=iconrender.to_ppm(rgb), format="PPM")
+            self.preview.config(image=self._photo, width=PREVIEW_SIZE, height=PREVIEW_SIZE)
+
+        def render_icon(self):
+            m = self.icon_model
+            if m is None:
+                return
+            t = time.time() - self.icon_start
+            yaw = t * ICON_SPIN + self.yaw_offset
+            try:
+                self._set_photo(m.render(PREVIEW_SIZE, seconds=t, yaw=yaw))
+            except Exception as e:  # noqa
+                self.icon_model = None
+                self.preview_info.config(text=self.preview_info.cget("text") + "\n图标渲染失败: %s" % e)
+
+        def _drag_start(self, event):
+            self._drag_x = event.x
+
+        def _drag(self, event):
+            self.yaw_offset += (event.x - self._drag_x) * 0.02
+            self._drag_x = event.x
 
         def set_status(self, status, note=""):
             self.status = status
@@ -480,6 +593,13 @@ def main():
             p.load(compare=False)
     refresh_compare()
     update_buttons()
+
+    def animate():
+        for p in (pane_a, pane_b):
+            if p.icon_model is not None:
+                p.render_icon()
+        root.after(ICON_FRAME_MS, animate)
+    animate()
 
     root.mainloop()
     return 0

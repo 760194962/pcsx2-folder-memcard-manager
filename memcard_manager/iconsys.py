@@ -62,6 +62,13 @@ def parse_title(data):
     return _decode(raw), ""
 
 
+def icon_file_name(data):
+    """icon.sys 指定的普通状态图标文件名（bytes，如 b"icon.ico"）；不是合法 icon.sys 时返回 None。"""
+    if not data or len(data) < ICON_SYS_SIZE or data[:4] != _MAGIC:
+        return None
+    return _STRUCT.unpack(data[:ICON_SYS_SIZE])[-4].split(b"\0", 1)[0] or None
+
+
 def description(data):
     """把两行标题合并成一行，用于列表显示。"""
     t = parse_title(data)

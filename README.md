@@ -34,13 +34,13 @@ Before the first change to an image in a session, the whole image is backed up t
 
 ## Usage / 用法
 
-Requires Python 3.8+ and MyMC++:
+Requires Python 3.8+, MyMC++ and numpy (numpy is only needed for the icon preview):
 
 ```
-pip install mymcplusplus
+pip install mymcplusplus numpy
 ```
 
-**GUI / 图形界面** — on Windows double-click `启动.bat` (finds Python, installs `mymcplusplus` if missing, then opens the GUI). Or double-click `run_gui.pyw`, or:
+**GUI / 图形界面** — on Windows double-click `启动.bat` (finds Python, installs `mymcplusplus` and `numpy` if missing, then opens the GUI). Or double-click `run_gui.pyw`, or:
 
 ```
 python -m memcard_manager
@@ -55,6 +55,7 @@ Two slots side by side, like Dolphin's memory card manager. In each slot click *
 - On Folder cards, delete moves saves to the Recycle Bin on Windows; overwriting on copy does the same with the old save. On images, see the `.bak` backup above
 - Copying into an image checks free space first, so a save that doesn't fit is rejected without touching the image
 - Click a column header to sort, again to reverse
+- **Icon preview / 图标预览**: select a save to see its animated 3D icon under the list, with the save's own background colours and lighting from `icon.sys`; it slowly spins, drag it to turn it. Rendered on the CPU with numpy. Animation speed (60 frames/s × the icon's `anim_speed`), spin (30°/s), colours and background were calibrated against recordings of the real PS2 BIOS browser; MyMC++ plays icons at a fixed 8 frames/s and the original mymc ignores `anim_speed`
 - Before writing to a card, the tool checks whether PCSX2 is running and asks first
 
 **Command line / 命令行**
@@ -90,7 +91,6 @@ Tests build a synthetic Folder card, round-trip saves through PSU / MAX / PSV, a
 
 ## Not yet / 暂未支持
 
-- Icon preview (`.ico` files are 3D models)
 - Long names: PS2 names are limited to 31 bytes; longer ones fail to export with an error
 - PS1 saves in `.psv`
 
