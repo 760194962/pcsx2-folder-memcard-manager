@@ -15,7 +15,7 @@ import os
 import struct
 
 from . import iconsys
-from .psu import (DEFAULT_DIR_MODE, DEFAULT_FILE_MODE, ENTRY_SIZE,
+from .ps2dirent import (DEFAULT_DIR_MODE, DEFAULT_FILE_MODE, ENTRY_SIZE,
                   format_time, pack_time)
 from .yamlmini import parse_index
 

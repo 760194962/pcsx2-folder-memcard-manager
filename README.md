@@ -1,17 +1,31 @@
 # PCSX2 Folder Memcard Manager
 
-Unofficial tool to browse **PCSX2 Folder memory cards** and export saves as **.psu** (EMS format) — no need to convert the whole card to a `.ps2` image first.
+Unofficial tool to browse **PCSX2 Folder memory cards** and **memory card images** (PCSX2 `.ps2`, PS3 `.vm2`, …), copy saves between them, and import/export saves (`.psu`, `.max`, …).
 
-非官方工具：直接浏览 PCSX2 **Folder 记忆卡**里的存档，并导出为 **.psu**，不用先把整张卡转换成 `.ps2` 镜像。
+非官方工具：直接浏览 PCSX2 **Folder 记忆卡**和**记忆卡镜像**（PCSX2 的 `.ps2`、PS3 的 `.vm2` 等），在卡之间复制存档，导入/导出 `.psu`、`.max` 等存档文件。
 
-Pure Python standard library, no dependencies. 只用 Python 标准库，无需安装依赖。
+Save file formats and card images are handled by [MyMC++](https://github.com/Adubbz/mymcplusplus) (`mymcplusplus`, the mymc version recommended by the PCSX2 docs); this tool adds the Folder card side and the dual-slot UI.
+存档文件格式和镜像卡读写交给 MyMC++，本工具负责 Folder 卡和双插槽界面。
+
+## Card types / 支持的卡
+
+| Type | Notes |
+|---|---|
+| PCSX2 Folder card (a directory) | Reads/writes PCSX2's `_pcsx2_*` metadata like PCSX2 does |
+| Card image `.ps2` `.vm2` `.mcd` `.mc2` `.bin` | 8 MB standard PS2 card, with or without ECC. PS3 internal `.vm2` files (`dev_hdd0/savedata/vmc`) are unencrypted and work as-is; encrypted `.vme` / exported cards do not |
+
+Before the first change to an image in a session, the whole image is backed up to `<file>.bak`.
+镜像卡在本次打开后第一次修改前，会整张备份为 `<文件名>.bak`。
 
 ## Features / 功能
 
 - List saves with **Directory / Size / Modified / Description**, the same columns as mymc
-  - Description is read from `icon.sys` (Shift-JIS title)
+  - Description is read from `icon.sys` (Shift-JIS title; Chinese-region games that store a GBK title in the reserved area are supported too)
   - Size is the space used on a memory card (1 KB clusters), matching mymc
-- Export one, several or all saves as `.psu`, loadable by mymc / mymc+ / uLaunchELF
+- **Export** one, several or all saves as `.psu` or `.max`
+- **Import** `.psu` `.max` `.cbs` `.sps` `.xps` `.psv` (PS2 saves only) into a Folder card; the format is detected from the file content
+  - Writes the same `_pcsx2_index` / `_pcsx2_meta` files PCSX2 does, so names, order and timestamps survive a PSU round trip
+  - `.max` has no timestamps or mode flags; imports use the current time and default modes
 - Reads PCSX2 metadata the same way PCSX2 does:
   - `_pcsx2_index`: file order and timestamps
   - `_pcsx2_meta/`: original file names (PCSX2 replaces `\ % : | " < >` and trailing dots/spaces with `_` on disk), mode and attribute flags
@@ -20,15 +34,28 @@ Pure Python standard library, no dependencies. 只用 Python 标准库，无需�
 
 ## Usage / 用法
 
-Requires Python 3.8+.
+Requires Python 3.8+ and MyMC++:
 
-**GUI / 图形界面** — double-click `run_gui.pyw`, or:
+```
+pip install mymcplusplus
+```
+
+**GUI / 图形界面** — on Windows double-click `启动.bat` (finds Python, installs `mymcplusplus` if missing, then opens the GUI). Or double-click `run_gui.pyw`, or:
 
 ```
 python -m memcard_manager
 ```
 
-Pick the Folder card directory itself (e.g. `.../PCSX2/memcards/Folder.ps2`, the one containing `_pcsx2_superblock`), select saves, choose an output folder, then click **导出所选** (export selected) or **导出全部** (export all).
+Two slots side by side, like Dolphin's memory card manager. In each slot click **文件夹卡…** and pick a Folder card directory (e.g. `.../PCSX2/memcards/Folder.ps2`, the one containing `_pcsx2_superblock`), or **镜像卡…** and pick a `.ps2` / `.vm2` file. The last opened cards are reopened on start.
+左右两个插槽，仿 Dolphin 的存储卡管理器；每个插槽可以打开 Folder 卡或镜像卡，启动时自动打开上次用过的卡。
+
+- **Compare / 对比**: with both slots open, each save is marked 相同 (same) / 不同 (different) / 仅此卡 (only on this card), compared by file names, order and content (works across card types, e.g. Folder card vs `.vm2`)
+- **Copy / 复制**: 复制到 B → / ← 复制到 A copies the selected saves as-is, including PCSX2 metadata
+- **Import / Export / Delete / Open folder** per slot (buttons under each list, or right-click). Double-click a save to open its folder
+- On Folder cards, delete moves saves to the Recycle Bin on Windows; overwriting on copy does the same with the old save. On images, see the `.bak` backup above
+- Copying into an image checks free space first, so a save that doesn't fit is rejected without touching the image
+- Click a column header to sort, again to reverse
+- Before writing to a card, the tool checks whether PCSX2 is running and asks first
 
 **Command line / 命令行**
 
@@ -36,14 +63,22 @@ Pick the Folder card directory itself (e.g. `.../PCSX2/memcards/Folder.ps2`, the
 # list saves
 python -m memcard_manager "D:\PS2\PCSX2\memcards\Folder.ps2"
 
-# export everything
+# export everything as PSU
 python -m memcard_manager "D:\PS2\PCSX2\memcards\Folder.ps2" -o out --all
 
-# export specific saves
-python -m memcard_manager "D:\PS2\PCSX2\memcards\Folder.ps2" -o out -s BASLUS-20500RDR -s BASLUS-20873SH4
+# export specific saves as MAX
+python -m memcard_manager "D:\PS2\PCSX2\memcards\Folder.ps2" -o out -f max -s BASLUS-20500RDR -s BASLUS-20873SH4
+
+# import saves into the card (close PCSX2 first); --force overwrites existing saves
+python -m memcard_manager "D:\PS2\PCSX2\memcards\Folder.ps2" -i a.psu -i b.max -i c.psv
+
+# the card can also be an image: list / export / import work the same
+python -m memcard_manager "D:\PS3\vmc\PS2 Internal Memory Card 1.VM2" -o out --all
 ```
 
 Or install it: `pip install .` then use `pcsx2-memcard` / `pcsx2-memcard-gui`.
+
+`.max` compression/decompression is pure Python (MyMC++'s LZARI), roughly 10 s per MB.
 
 ## Tests / 测试
 
@@ -51,18 +86,22 @@ Or install it: `pip install .` then use `pcsx2-memcard` / `pcsx2-memcard-gui`.
 python -m unittest discover -s tests -v
 ```
 
-Tests build a synthetic Folder card. If [mymcplus](https://pypi.org/project/mymcplus/) is installed, they also import the exported PSUs into a `.ps2` image, run `check`, compare the Size column, and export them back to verify names, order, content and timestamps.
+Tests build a synthetic Folder card, round-trip saves through PSU / MAX / PSV, and cross-check with MyMC++: the exported PSUs are imported into a `.ps2` image, `check`ed, the Size column compared, and exported back to verify names, order, content and timestamps.
 
 ## Not yet / 暂未支持
 
 - Icon preview (`.ico` files are 3D models)
-- Importing `.psu` into a Folder card
 - Long names: PS2 names are limited to 31 bytes; longer ones fail to export with an error
+- PS1 saves in `.psv`
 
 ## Format notes / 格式说明
 
-Folder card layout was checked against PCSX2's `pcsx2/SIO/Memcard/MemoryCardFolder.cpp`. A PSU file is a sequence of 512-byte PS2 directory entries (the directory, `.`, `..`, then one per file), each file entry followed by its data padded to 1024 bytes.
+Folder card layout was checked against PCSX2's `pcsx2/SIO/Memcard/MemoryCardFolder.cpp`.
+
+## License
+
+GPL-3.0-or-later, because it builds on MyMC++ (GPL-3). See [LICENSE](LICENSE).
 
 ## Disclaimer
 
-Not affiliated with the PCSX2 project. Back up your memory card folder before use; this tool only reads it.
+Not affiliated with the PCSX2 project. Back up your memory card folder before use; importing writes into the card folder (and `--force` / the overwrite prompt replaces a save), so close PCSX2 first.

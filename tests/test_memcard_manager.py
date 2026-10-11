@@ -1,4 +1,3 @@
-import importlib.util
 import os
 import random
 import re
@@ -11,11 +10,19 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from memcard_manager import iconsys  # noqa: E402
+from mymcplusplus import ps2mc  # noqa: E402
+
+from memcard_manager import cardops, iconsys  # noqa: E402
+from memcard_manager.cards import FolderCard, ImageCard, open_card  # noqa: E402
+from memcard_manager.saveformats import read_save_file  # noqa: E402
 from memcard_manager.foldercard import list_saves, read_save  # noqa: E402
-from memcard_manager.psu import (ALIGN, ENTRY_SIZE, export_save,  # noqa: E402
-                                 format_time, pack_time)
+from memcard_manager.importer import SaveExists, import_save  # noqa: E402
+from memcard_manager.importer import host_name  # noqa: E402
+from memcard_manager.ps2dirent import ENTRY_SIZE, format_time, pack_time  # noqa: E402
+from memcard_manager.saveformats import export_save  # noqa: E402
 from memcard_manager.yamlmini import parse_index  # noqa: E402
+
+ALIGN = 1024  # PSU 里文件内容按 1KB 对齐
 
 
 def wr(path, data):
@@ -139,6 +146,16 @@ class TestIconSys(unittest.TestCase):
         self.assertEqual(iconsys.description(make_icon_sys("ＧＴ４", "Ｏｎｌｉｎｅ")),
                          "GT4 Online")
 
+    def test_cn_reserved_area_title(self):
+        # 国行游戏：标题在 0x1C4（标志 + 换行位置 + GBK 文本），0xC0 处为空
+        raw = "ＧＲＡＮ　ＴＵＲＩＳＭＯ　４Ｇａｍｅ　Ｄａｔａ".encode("gb18030")
+        reserved = b"\x01\x00" + (28).to_bytes(2, "little") + raw
+        data = iconsys._STRUCT.pack(
+            b"PS2D", 0, 0, 0, 0, *([0] * 16), *([0.0] * 12), *([0.0] * 16),
+            b"", b"icon0.ico", b"", b"", reserved)
+        self.assertEqual(iconsys.parse_title(data), ("GRAN TURISMO 4", "Game Data"))
+        self.assertEqual(iconsys.description(data), "GRAN TURISMO 4 Game Data")
+
     def test_invalid(self):
         self.assertEqual(iconsys.description(b"\0" * 964), "")
         self.assertEqual(iconsys.description(b"PS2D"), "")
@@ -197,12 +214,269 @@ class TestPsu(CardTestCase):
             export_save(s, os.path.join(self.tmp, "o"))
 
 
-@unittest.skipUnless(importlib.util.find_spec("mymcplus"),
-                     "未安装 mymcplus，跳过交叉验证（pip install mymcplus）")
-class TestMymcplusCrossCheck(CardTestCase):
-    def mc(self, *args):
-        return subprocess.run([sys.executable, "-m", "mymcplus", *args],
-                              capture_output=True, text=True, check=True).stdout
+class TestImport(CardTestCase):
+    def test_roundtrip(self):
+        out = os.path.join(self.tmp, "out")
+        paths = [export_save(s, out) for s in self.saves().values()]
+        new_card = os.path.join(self.tmp, "New.ps2")
+        os.makedirs(new_card)
+        for p in paths:
+            import_save(p, new_card)
+        old, new = self.saves(), {s.host_name: s for s in list_saves(new_card)}
+        self.assertEqual(set(old), set(new))
+        for name, o in old.items():
+            n = new[name]
+            self.assertEqual([f.name for f in o.files], [f.name for f in n.files])
+            self.assertEqual([(f.mode, f.attr, f.created, f.modified) for f in o.files],
+                             [(f.mode, f.attr, f.created, f.modified) for f in n.files])
+            for fo, fn in zip(o.files, n.files):
+                with open(fo.host_path, "rb") as a, open(fn.host_path, "rb") as b:
+                    self.assertEqual(a.read(), b.read())
+            self.assertEqual((o.mode, o.created, o.modified), (n.mode, n.created, n.modified))
+        # 非法字符被换成 _，真名保存在 meta 里
+        self.assertTrue(os.path.isfile(os.path.join(new_card, "BASLUS-20209JEREMY", "data_1_2.sav")))
+        self.assertEqual(new["BASLUS-20209JEREMY"].description, "ICO")
+
+    def test_exists_and_overwrite(self):
+        out = os.path.join(self.tmp, "out")
+        p = export_save(self.saves()["BISLPM-66168SAVE"], out)
+        with self.assertRaises(SaveExists):
+            import_save(p, self.card)
+        self.assertEqual(import_save(p, self.card, overwrite=True), "BISLPM-66168SAVE")
+
+    def test_truncated(self):
+        out = os.path.join(self.tmp, "out")
+        p = export_save(self.saves()["BISLPM-66168SAVE"], out)
+        with open(p, "r+b") as f:
+            f.truncate(2000)
+        with self.assertRaises(ValueError):
+            import_save(p, os.path.join(self.tmp, "x"))
+
+    def test_max_roundtrip(self):
+        # MAX 不保存时间戳和 mode，只比较文件名、顺序和内容
+        out = os.path.join(self.tmp, "out")
+        new_card = os.path.join(self.tmp, "New.ps2")
+        os.makedirs(new_card)
+        for s in self.saves().values():
+            p = export_save(s, out, "max")
+            self.assertTrue(p.endswith(".max"))
+            import_save(p, new_card)
+        old, new = self.saves(), {s.host_name: s for s in list_saves(new_card)}
+        self.assertEqual(set(old), set(new))
+        for name, o in old.items():
+            n = new[name]
+            self.assertEqual([f.name for f in o.files], [f.name for f in n.files])
+            for fo, fn in zip(o.files, n.files):
+                with open(fo.host_path, "rb") as a, open(fn.host_path, "rb") as b:
+                    self.assertEqual(a.read(), b.read())
+
+    def test_max_japanese_title(self):
+        # mymcplusplus 自己写 MAX 时日文标题会编码失败，这里要能正常导出
+        b = os.path.join(self.card, "BISLPM-66168SAVE")
+        wr(os.path.join(b, "icon.sys"), make_icon_sys("ドラゴン", "クエスト"))
+        export_save(self.saves()["BISLPM-66168SAVE"], os.path.join(self.tmp, "o"), "max")
+
+    def test_psv(self):
+        created = struct.pack("<BBBBBBH", 0, 1, 2, 3, 4, 5, 2007)
+        modified = struct.pack("<BBBBBBH", 0, 6, 7, 8, 9, 10, 2008)
+        files = [(b"icon.sys", make_icon_sys("ＰＳＶ")), (b"DATA.BIN", self.rnd.randbytes(3000))]
+        hdr = struct.pack("<4sI40s8xII", b"\0VSP", 0, b"\0" * 40, 0x2C, 2)
+        hdr += struct.pack("<10I", *([0] * 9 + [len(files)]))
+        hdr += struct.pack("<8s8sII32s", created, modified, len(files) + 2, 0x8427, b"BASLUS-12345PSV")
+        off = len(hdr) + len(files) * (56 + 4)
+        body = b""
+        for name, data in files:
+            hdr += struct.pack("<8s8sII32s", created, modified, len(data), 0x8497, name)
+            hdr += struct.pack("<I", off + len(body))
+            body += data
+        p = os.path.join(self.tmp, "test.psv")
+        wr(p, hdr + body)
+
+        self.assertEqual(import_save(p, self.card), "BASLUS-12345PSV")
+        s = read_save(self.card, "BASLUS-12345PSV")
+        self.assertEqual([(f.name, f.created, f.modified) for f in s.files],
+                         [(n, created, modified) for n, _ in files])
+        with open(s.files[1].host_path, "rb") as f:
+            self.assertEqual(f.read(), files[1][1])
+        self.assertEqual(s.description, "PSV")
+
+    def test_unknown_format(self):
+        p = os.path.join(self.tmp, "junk.psu")
+        wr(p, b"x" * 4000)
+        with self.assertRaises(ValueError):
+            import_save(p, self.card)
+
+    def test_host_name(self):
+        self.assertEqual(host_name(b'a\\b/c:d*e?f"g<h>i|j%k'), "a_b_c_d_e_f_g_h_i_j_k")
+        self.assertEqual(host_name(b"name. "), "name__")
+
+
+class TestCardOps(CardTestCase):
+    def setUp(self):
+        super().setUp()
+        self.card_b = os.path.join(self.tmp, "B.ps2")
+        os.makedirs(self.card_b)
+        wr(os.path.join(self.card_b, "_pcsx2_superblock"), b"\0" * 512)
+
+    def test_copy_keeps_metadata(self):
+        cardops.copy_save(self.card, "BASLUS-20209JEREMY", self.card_b)
+        a = read_save(self.card, "BASLUS-20209JEREMY")
+        b = read_save(self.card_b, "BASLUS-20209JEREMY")
+        self.assertEqual([(f.name, f.mode, f.created, f.modified) for f in a.files],
+                         [(f.name, f.mode, f.created, f.modified) for f in b.files])
+        self.assertEqual(cardops.digest(a), cardops.digest(b))
+
+    def test_copy_exists_overwrite_and_same_card(self):
+        cardops.copy_save(self.card, "BISLPM-66168SAVE", self.card_b)
+        with self.assertRaises(SaveExists):
+            cardops.copy_save(self.card, "BISLPM-66168SAVE", self.card_b)
+        wr(os.path.join(self.card, "BISLPM-66168SAVE", "SAVE.BIN"), b"new")
+        cardops.copy_save(self.card, "BISLPM-66168SAVE", self.card_b, overwrite=True, recycle=False)
+        with open(os.path.join(self.card_b, "BISLPM-66168SAVE", "SAVE.BIN"), "rb") as f:
+            self.assertEqual(f.read(), b"new")
+        with self.assertRaises(ValueError):
+            cardops.copy_save(self.card, "BISLPM-66168SAVE", self.card + os.sep)
+
+    def test_delete(self):
+        cardops.delete_save(self.card, "BISLPM-66168SAVE", recycle=False)
+        self.assertNotIn("BISLPM-66168SAVE", self.saves())
+        with self.assertRaises(FileNotFoundError):
+            cardops.delete_save(self.card, "BISLPM-66168SAVE", recycle=False)
+        for bad in ("", "..", "_pcsx2_superblock", "a" + os.sep + "b"):
+            with self.assertRaises(ValueError):
+                cardops.delete_save(self.card, bad, recycle=False)
+
+    def test_compare(self):
+        cardops.copy_save(self.card, "BASLUS-20209JEREMY", self.card_b)
+        cardops.copy_save(self.card, "BISLPM-66168SAVE", self.card_b)
+        wr(os.path.join(self.card_b, "BISLPM-66168SAVE", "SAVE.BIN"), b"changed")
+        os.makedirs(os.path.join(self.card_b, "BASLUS-99999ONLYB"))
+        a, b = FolderCard(self.card), FolderCard(self.card_b)
+        st_a, st_b = cardops.compare(a.digests(a.list_saves()), b.digests(b.list_saves()))
+        self.assertEqual(st_a, {b"BASLUS-20209JEREMY": cardops.SAME,
+                                b"BISLPM-66168SAVE": cardops.DIFF,
+                                b"BASCUS-97436GAMEDATA": cardops.ONLY})
+        self.assertEqual(st_b, {b"BASLUS-20209JEREMY": cardops.SAME,
+                                b"BISLPM-66168SAVE": cardops.DIFF,
+                                b"BASLUS-99999ONLYB": cardops.ONLY})
+
+
+def make_image(path, ecc=True):
+    """用 MyMC++ 格式化一张空的 8MB 记忆卡镜像。ecc=False 相当于 PS3 以外的无 ECC 镜像。"""
+    with open(path, "w+b") as f:
+        ps2mc.ps2mc(f, True, (ecc, ps2mc.PS2MC_STANDARD_PAGE_SIZE,
+                              ps2mc.PS2MC_STANDARD_PAGES_PER_ERASE_BLOCK,
+                              ps2mc.PS2MC_STANDARD_PAGES_PER_CARD)).close()
+
+
+class TestImageCard(CardTestCase):
+    def setUp(self):
+        super().setUp()
+        self.img_path = os.path.join(self.tmp, "card.ps2")
+        make_image(self.img_path)
+        self.img = open_card(self.img_path)
+        self.folder = open_card(self.card)
+
+    def mc_check(self, path):
+        r = subprocess.run([sys.executable, "-m", "mymcplusplus", path, "check"], env=_MC_ENV,
+                           capture_output=True, encoding="utf-8", errors="replace")
+        self.assertIn("No errors found", r.stdout + r.stderr)
+
+    def test_open_card_kind(self):
+        self.assertIsInstance(self.img, ImageCard)
+        self.assertIsInstance(self.folder, FolderCard)
+        self.assertEqual(self.img.list_saves(), [])
+        self.assertEqual(self.img.free // 1024, 8134)  # 空的标准 8MB 卡
+
+    def test_folder_to_image_and_back(self):
+        saves = {s.host_name: s for s in self.folder.list_saves()}
+        for s in saves.values():
+            self.img.copy_from(self.folder, s)
+        self.assertTrue(os.path.exists(self.img_path + ".bak"))
+        self.mc_check(self.img_path)
+
+        img_saves = {s.host_name: s for s in self.img.list_saves()}
+        # 文件名含非法字符的存档在镜像里是真名，Size 与 Folder 卡算法一致
+        self.assertEqual(set(img_saves), set(saves))
+        for name, s in saves.items():
+            self.assertEqual(img_saves[name].card_size, s.card_size, name)
+        self.assertEqual(img_saves["BASCUS-97436GAMEDATA"].description, "GT4 Online")
+        # 两种卡之间对比：内容全部相同
+        st_f, st_i = cardops.compare(self.folder.digests(saves.values()),
+                                     self.img.digests(img_saves.values()))
+        self.assertEqual(set(st_f.values()) | set(st_i.values()), {cardops.SAME})
+
+        # 镜像 -> 新的 Folder 卡：名字、顺序、mode、时间戳、内容都保留
+        new = os.path.join(self.tmp, "New.ps2")
+        os.makedirs(new)
+        new_card = open_card(new)
+        for s in img_saves.values():
+            new_card.copy_from(self.img, s)
+        for name, s in saves.items():
+            n = read_save(new, name)
+            self.assertEqual([(f.name, f.mode, f.created, f.modified) for f in s.files],
+                             [(f.name, f.mode, f.created, f.modified) for f in n.files], name)
+            self.assertEqual(cardops.digest(s), cardops.digest(n))
+            self.assertEqual((s.created, s.modified), (n.created, n.modified))
+
+    def test_exists_overwrite_delete(self):
+        self.img.list_saves()
+        empty_free = self.img.free
+        s = self.folder.list_saves()[0]
+        self.img.copy_from(self.folder, s)
+        with self.assertRaises(SaveExists):
+            self.img.copy_from(self.folder, s)
+        self.img.copy_from(self.folder, s, overwrite=True)
+        self.assertEqual(len(self.img.list_saves()), 1)
+        self.img.delete(self.img.list_saves()[0])
+        self.assertEqual(self.img.list_saves(), [])
+        self.assertLessEqual(empty_free - self.img.free, 1024)  # 根目录可能多占一个簇
+        self.mc_check(self.img_path)
+
+    def test_no_space(self):
+        big = os.path.join(self.card, "BASLUS-77777BIG")
+        os.makedirs(big)
+        wr(os.path.join(big, "HUGE.BIN"), b"\0" * (8200 * 1024))
+        s = [x for x in self.folder.list_saves() if x.host_name == "BASLUS-77777BIG"][0]
+        with self.assertRaises(ValueError):
+            self.img.copy_from(self.folder, s)
+        self.assertEqual(self.img.list_saves(), [])
+        self.mc_check(self.img_path)
+
+    def test_no_ecc_image_and_export_import(self):
+        # PS3 的 .vm2 / 某些工具做的镜像没有 ECC
+        path = os.path.join(self.tmp, "noecc.vm2")
+        make_image(path, ecc=False)
+        self.assertEqual(os.path.getsize(path), 8 * 1024 * 1024)
+        img = open_card(path)
+        s = [x for x in self.folder.list_saves() if x.host_name == "BASLUS-20209JEREMY"][0]
+        img.copy_from(self.folder, s)
+        self.assertEqual(os.path.getsize(path), 8 * 1024 * 1024)
+        self.mc_check(path)
+        out = os.path.join(self.tmp, "out")
+        p = img.export(img.list_saves()[0], out, "psu")
+        root, files = read_save_file(p)
+        self.assertEqual([f.name for f in files], [f.name for f in s.files])
+        img.write(root, files, overwrite=True)
+        self.assertEqual(cardops.digest(s), img.digests(img.list_saves())[b"BASLUS-20209JEREMY"])
+
+    def test_not_an_image(self):
+        p = os.path.join(self.tmp, "junk.ps2")
+        wr(p, b"\0" * 1000)
+        with self.assertRaises(ValueError):
+            open_card(p).list_saves()
+
+
+_MC_ENV = dict(os.environ, PYTHONIOENCODING="utf-8")
+
+
+class TestMymcCrossCheck(CardTestCase):
+    """用 MyMC++ 把导出的 PSU 导入 .ps2 镜像再导出，交叉验证。"""
+
+    def mc(self, *args, cwd=None):
+        return subprocess.run([sys.executable, "-m", "mymcplusplus", *args], cwd=cwd, env=_MC_ENV,
+                              capture_output=True, encoding="utf-8", errors="replace",
+                              check=True).stdout
 
     def test_import_check_and_sizes(self):
         out = os.path.join(self.tmp, "out")
@@ -214,7 +488,7 @@ class TestMymcplusCrossCheck(CardTestCase):
             self.mc(img, "import", p)
         self.assertIn("No errors found", self.mc(img, "check"))
 
-        # mymcplus 的 dir 里 Size 与我们的 card_size 一致
+        # MyMC++ 的 dir 里 Size 与我们的 card_size 一致
         listing = self.mc(img, "dir")
         sizes = dict(re.findall(r"^(\S+)\s+.*\n\s*(\d+)KB", listing, re.M))
         for name, s in saves.items():
@@ -224,8 +498,7 @@ class TestMymcplusCrossCheck(CardTestCase):
         for name, s in saves.items():
             back = os.path.join(self.tmp, "back")
             os.makedirs(back, exist_ok=True)
-            subprocess.run([sys.executable, "-m", "mymcplus", img, "export", s.display_name],
-                           cwd=back, check=True, capture_output=True)
+            self.mc(img, "export", "-o", s.display_name + ".psu", s.display_name, cwd=back)
             mine = parse_psu(os.path.join(out, name + ".psu"))
             theirs = parse_psu(os.path.join(back, s.display_name + ".psu"))
             self.assertEqual(len(mine), len(theirs))

@@ -5,10 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pcsx2-folder-memcard-manager"
 version = "0.1.0"
-description = "Unofficial tool to browse PCSX2 Folder memory cards and export saves as .psu"
+description = "Unofficial tool to browse PCSX2 Folder memory cards and import/export saves (.psu, .max, ...)"
 readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
 requires-python = ">=3.8"
-dependencies = []
+dependencies = ["mymcplusplus>=3.2.0"]
 
 [project.scripts]
 pcsx2-memcard = "memcard_manager.cli:main"

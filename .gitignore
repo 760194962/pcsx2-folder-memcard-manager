@@ -7,3 +7,6 @@ dist/
 venv/
 *.psu
 *.ps2
+*.max
+*.vm2
+*.bak

@@ -23,6 +23,29 @@ def _decode(raw):
     return unicodedata.normalize("NFKC", raw.decode("cp932", errors="replace")).strip()
 
 
+def _decode_cn(raw):
+    # 国行游戏的标题是 GBK（全角字母部分与 EUC-JP 相同），解不开再退回 cp932
+    try:
+        text = raw.decode("gb18030")
+    except UnicodeDecodeError:
+        return _decode(raw)
+    return unicodedata.normalize("NFKC", text).strip()
+
+
+def _parse_reserved_title(reserved):
+    """国行游戏把标题放在末尾保留区：2 字节标志 + 2 字节换行位置 + 文本。
+
+    标准位置（0xC0）为空时才会走到这里。
+    """
+    linebreak = int.from_bytes(reserved[2:4], "little")
+    raw = reserved[4:].split(b"\0", 1)[0]
+    if not raw:
+        return "", ""
+    if 0 < linebreak < len(raw):
+        return _decode_cn(raw[:linebreak]), _decode_cn(raw[linebreak:])
+    return _decode_cn(raw), ""
+
+
 def parse_title(data):
     """返回 (第一行, 第二行)；不是合法 icon.sys 时返回 None。"""
     if len(data) < ICON_SYS_SIZE:
@@ -32,6 +55,8 @@ def parse_title(data):
         return None
     linebreak = fields[2]
     raw = fields[-5].split(b"\0", 1)[0]
+    if not raw:
+        return _parse_reserved_title(fields[-1])
     if 0 < linebreak < len(raw):
         return _decode(raw[:linebreak]), _decode(raw[linebreak:])
     return _decode(raw), ""
