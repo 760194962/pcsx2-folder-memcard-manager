@@ -2,10 +2,10 @@
 
 Unofficial tool to browse **PCSX2 Folder memory cards** and **memory card images** (PCSX2 `.ps2`, PS3 `.vm2`, …), copy saves between them, and import/export saves (`.psu`, `.max`, …).
 
-非官方工具：直接浏览 PCSX2 **Folder 记忆卡**和**记忆卡镜像**（PCSX2 的 `.ps2`、PS3 的 `.vm2` 等），在卡之间复制存档，导入/导出 `.psu`、`.max` 等存档文件。
+非官方工具：直接浏览 PCSX2 **文件夹卡**（Folder 记忆卡）和**记忆卡镜像**（PCSX2 的 `.ps2`、PS3 的 `.vm2` 等），在卡之间复制存档，导入/导出 `.psu`、`.max` 等存档文件。
 
 Save file formats and card images are handled by [MyMC++](https://github.com/Adubbz/mymcplusplus) (`mymcplusplus`, the mymc version recommended by the PCSX2 docs); this tool adds the Folder card side and the dual-slot UI.
-存档文件格式和镜像卡读写交给 MyMC++，本工具负责 Folder 卡和双插槽界面。
+存档文件格式和镜像卡读写交给 MyMC++，本工具负责文件夹卡和双插槽界面。
 
 ## Card types / 支持的卡
 
@@ -47,7 +47,7 @@ python -m memcard_manager
 ```
 
 Two slots side by side, like Dolphin's memory card manager. In each slot click **文件夹卡…** and pick a Folder card directory (e.g. `.../PCSX2/memcards/Folder.ps2`, the one containing `_pcsx2_superblock`), or **镜像卡…** and pick a `.ps2` / `.vm2` file. The last opened cards are reopened on start.
-左右两个插槽，仿 Dolphin 的存储卡管理器；每个插槽可以打开 Folder 卡或镜像卡，启动时自动打开上次用过的卡。
+左右两个插槽，仿 Dolphin 的存储卡管理器；每个插槽可以打开文件夹卡或镜像卡，启动时自动打开上次用过的卡。
 
 - **Compare / 对比**: with both slots open, each save is marked 相同 (same) / 不同 (different) / 仅此卡 (only on this card), compared by file names, order and content (works across card types, e.g. Folder card vs `.vm2`)
 - **Copy / 复制**: 复制到 B → / ← 复制到 A copies the selected saves as-is, including PCSX2 metadata

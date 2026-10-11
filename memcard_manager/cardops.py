@@ -1,4 +1,4 @@
-"""Folder 卡之间的存档操作：复制、删除、对比。"""
+"""文件夹卡之间的存档操作：复制、删除、对比。"""
 
 import hashlib
 import os
@@ -45,7 +45,7 @@ def can_recycle():
 
 
 def pcsx2_running():
-    """PCSX2 是否在运行。它运行时会占用并回写 Folder 卡，此时改卡可能丢数据。"""
+    """PCSX2 是否在运行。它运行时会占用并回写文件夹卡，此时改卡可能丢数据。"""
     try:
         if sys.platform == "win32":
             out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq pcsx2*", "/NH", "/FO", "CSV"],
@@ -88,7 +88,7 @@ def copy_save(src_card, host_name, dst_card, overwrite=False, recycle=True):
 def digest_files(files):
     """存档内容的指纹：[(文件名 bytes, 内容 bytes)] 按顺序，不含时间戳。
 
-    Folder 卡和镜像卡用同一个算法，所以两种卡之间也能对比。"""
+    文件夹卡和镜像卡用同一个算法，所以两种卡之间也能对比。"""
     h = hashlib.sha1()
     for name, data in files:
         h.update(name + b"\0")
@@ -98,7 +98,7 @@ def digest_files(files):
 
 
 def digest(save):
-    """Folder 卡里一个存档的指纹。"""
+    """文件夹卡里一个存档的指纹。"""
     def files():
         for f in save.files:
             with open(f.host_path, "rb") as fp:

@@ -1,4 +1,4 @@
-"""存档文件格式交给 mymcplusplus（MyMC++）处理，这里只负责和 Folder 卡之间的转换。
+"""存档文件格式交给 mymcplusplus（MyMC++）处理，这里只负责和文件夹卡之间的转换。
 
 导入：PSU / MAX / CBS / SPS / XPS / PSV（按文件内容自动识别）
 导出：PSU / MAX

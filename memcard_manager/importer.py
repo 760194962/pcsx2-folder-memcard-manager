@@ -1,4 +1,4 @@
-"""把存档文件（PSU / MAX / CBS / SPS / XPS / PSV）导入 Folder 记忆卡。
+"""把存档文件（PSU / MAX / CBS / SPS / XPS / PSV）导入文件夹卡。
 
 写出的布局与 PCSX2 自己保存时一致：存档目录里放文件本体，另外有
 ``_pcsx2_index``（文件顺序与时间戳）、``_pcsx2_meta/<文件名>``（原始目录项）
@@ -58,7 +58,7 @@ def import_save(path, card_dir, overwrite=False):
 
 
 def write_folder_save(root, files, card_dir, overwrite=False, remove_existing=shutil.rmtree):
-    """把 (目录 Entry, [文件 Entry]) 写成 Folder 卡里的一个存档目录，返回目录名。
+    """把 (目录 Entry, [文件 Entry]) 写成文件夹卡里的一个存档目录，返回目录名。
 
     目标已存在时：overwrite=False 抛 SaveExists，否则先用 remove_existing 删掉旧目录。
     """

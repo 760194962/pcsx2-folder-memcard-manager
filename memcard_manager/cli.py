@@ -7,6 +7,7 @@ from .cardops import pcsx2_running
 from .cards import open_card
 from .foldercard import looks_like_folder_card
 from .importer import SaveExists
+from .region import region
 from .saveformats import EXPORT_FORMATS, read_save_file
 
 
@@ -21,7 +22,7 @@ def cli(args):
         print(e, file=sys.stderr)
         return 2
     if card.kind == "folder" and not looks_like_folder_card(card.path):
-        print("提示: %s 里没有 _pcsx2_superblock，可能不是 Folder 卡本身的文件夹。" % card.path,
+        print("提示: %s 里没有 _pcsx2_superblock，可能不是文件夹卡本身。" % card.path,
               file=sys.stderr)
     if args.imports:
         if pcsx2_running():
@@ -50,10 +51,12 @@ def cli(args):
         return 1
 
     if not args.out and not args.all and not args.save:
-        print("%-26s %6s  %-16s  %s" % ("Directory", "Size", "Modified", "Description"))
+        print("%-26s %-6s %6s  %-16s  %s" % ("Directory", "Region", "Size", "Modified",
+                                              "Description"))
         for s in saves:
-            print("%-26s %6s  %-16s  %s" % (s.display_name, fmt_kb(s.card_size),
-                                            s.modified_str, s.description))
+            print("%-26s %-6s %6s  %-16s  %s" % (s.display_name, region(s.display_name),
+                                               fmt_kb(s.card_size),
+                                               s.modified_str, s.description))
         if card.free is not None:
             print("\n剩余空间: %s" % fmt_kb(card.free))
         print("\n加 -o 输出目录 并用 --all 或 -s 名字 来导出（-f max 导出为 MAX）。")
@@ -87,10 +90,10 @@ def cli(args):
 def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="memcard_manager",
-        description="浏览 PS2 记忆卡（PCSX2 Folder 卡、.ps2 / .vm2 镜像）里的存档，"
+        description="浏览 PS2 记忆卡（PCSX2 文件夹卡、.ps2 / .vm2 镜像）里的存档，"
                     "并导入/导出 .psu / .max 等（非官方工具）")
     ap.add_argument("card", nargs="?",
-                    help="Folder 卡文件夹（如 memcards/Folder.ps2）或记忆卡镜像文件；不填则打开图形界面")
+                    help="文件夹卡（如 memcards/Folder.ps2）或记忆卡镜像文件；不填则打开图形界面")
     ap.add_argument("-o", "--out", help="导出文件夹")
     ap.add_argument("-f", "--format", choices=EXPORT_FORMATS, default="psu",
                     help="导出格式（默认 psu）")

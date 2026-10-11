@@ -1,6 +1,6 @@
-"""读取 PCSX2 的 Folder 记忆卡。
+"""读取 PCSX2 的文件夹卡。
 
-读取方式与 PCSX2 自己加载 Folder 卡时一致：
+读取方式与 PCSX2 自己加载文件夹卡时一致：
 
 * 每个存档目录里的 ``_pcsx2_index`` (YAML) 提供文件顺序与时间戳
 * ``_pcsx2_meta/<文件名>`` 是 512 字节的原始目录项，保存真实文件名、mode、attr
@@ -156,7 +156,7 @@ def read_save(card_dir, host_name):
         else:
             legacy.append((fname, sf))
 
-    # 没有 index 的文件排在前面（与 PCSX2 对旧版 Folder 卡的处理一致）
+    # 没有 index 的文件排在前面（与 PCSX2 对旧版文件夹卡的处理一致）
     legacy.sort(key=lambda x: (x[0].lower(), x[0]))
     indexed.sort(key=lambda x: (x[0], x[1]))
     files = [sf for _, sf in legacy] + [sf for _, _, sf in indexed]

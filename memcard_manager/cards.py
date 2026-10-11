@@ -1,6 +1,6 @@
 """两种记忆卡的统一接口：
 
-* FolderCard —— PCSX2 的 Folder 卡（一个文件夹）
+* FolderCard —— PCSX2 的文件夹卡（一个文件夹）
 * ImageCard  —— 记忆卡镜像文件：PCSX2 的 .ps2、PS3 的 .vm2（未加密）、.mcd / .bin 等，
   通过 mymcplusplus 读写；带不带 ECC 都可以
 
@@ -36,11 +36,11 @@ def open_card(path):
 
 class FolderCard:
     kind = "folder"
-    kind_label = "Folder 卡"
+    kind_label = "文件夹卡"
 
     def __init__(self, path):
         self.path = path
-        self.free = None    # Folder 卡没有固定容量（PCSX2 会按游戏筛选存档）
+        self.free = None    # 文件夹卡没有固定容量（PCSX2 会按游戏筛选存档）
 
     def list_saves(self):
         return _list_folder_saves(self.path)
@@ -58,7 +58,7 @@ class FolderCard:
 
     def copy_from(self, src, save, overwrite=False, recycle=True):
         if isinstance(src, FolderCard):
-            # Folder 卡之间整个目录原样复制，PCSX2 的元数据一个不丢
+            # 文件夹卡之间整个目录原样复制，PCSX2 的元数据一个不丢
             return cardops.copy_save(src.path, save.host_name, self.path, overwrite, recycle)
         root, files = src.read(save)
         return self.write(root, files, overwrite, recycle)

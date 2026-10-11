@@ -14,6 +14,7 @@ from mymcplusplus import ps2mc  # noqa: E402
 
 from memcard_manager import cardops, iconsys  # noqa: E402
 from memcard_manager.cards import FolderCard, ImageCard, open_card  # noqa: E402
+from memcard_manager.region import region, serial  # noqa: E402
 from memcard_manager.saveformats import read_save_file  # noqa: E402
 from memcard_manager.foldercard import list_saves, read_save  # noqa: E402
 from memcard_manager.importer import SaveExists, import_save  # noqa: E402
@@ -138,6 +139,31 @@ class TestYaml(unittest.TestCase):
     def test_empty_and_missing(self):
         self.assertEqual(self._parse(""), {})
         self.assertEqual(parse_index("/nonexistent/_pcsx2_index"), {})
+
+
+class TestRegion(unittest.TestCase):
+    def test_by_serial(self):
+        cases = {
+            "BASLUS-20209JEREMY": ("USA", "SLUS-20209"),
+            "BESCES-52530": ("Europe", "SCES-52530"),
+            "BISLPM-66168SAVE": ("Japan", "SLPM-66168"),
+            "BISCPS-15017LOG000": ("Japan", "SCPS-15017"),
+            "BISCAJ-20144-0": ("Asia", "SCAJ-20144"),
+            "BKSCKA-20010DATA": ("Korea", "SCKA-20010"),
+            "BCSCCS-60002GAMEDATA": ("China", "SCCS-60002"),
+            # 国行 ICO 的存档用的是 BI，但编号 SCCS 说明是国行（China）
+            "BISCCS-40005ico": ("China", "SCCS-40005"),
+        }
+        for name, (r, ser) in cases.items():
+            self.assertEqual((region(name), serial(name)), (r, ser), name)
+
+    def test_fallback_and_unknown(self):
+        self.assertEqual(region("BADATA-SYSTEM"), "USA")
+        self.assertEqual(region("BIDATA-SYSTEM"), "Japan")
+        self.assertEqual(region("BISLPS-25136"), "Japan")
+        self.assertEqual(region("BEXYZW-12345"), "Europe")   # 认不出的编号，退回区域字母
+        self.assertEqual(region("SAVEDATA"), "")
+        self.assertEqual(serial("BADATA-SYSTEM"), "")
 
 
 class TestIconSys(unittest.TestCase):
@@ -396,7 +422,7 @@ class TestImageCard(CardTestCase):
         self.mc_check(self.img_path)
 
         img_saves = {s.host_name: s for s in self.img.list_saves()}
-        # 文件名含非法字符的存档在镜像里是真名，Size 与 Folder 卡算法一致
+        # 文件名含非法字符的存档在镜像里是真名，Size 与文件夹卡算法一致
         self.assertEqual(set(img_saves), set(saves))
         for name, s in saves.items():
             self.assertEqual(img_saves[name].card_size, s.card_size, name)
@@ -406,7 +432,7 @@ class TestImageCard(CardTestCase):
                                      self.img.digests(img_saves.values()))
         self.assertEqual(set(st_f.values()) | set(st_i.values()), {cardops.SAME})
 
-        # 镜像 -> 新的 Folder 卡：名字、顺序、mode、时间戳、内容都保留
+        # 镜像 -> 新的文件夹卡：名字、顺序、mode、时间戳、内容都保留
         new = os.path.join(self.tmp, "New.ps2")
         os.makedirs(new)
         new_card = open_card(new)

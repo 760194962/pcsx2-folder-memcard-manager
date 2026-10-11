@@ -1,6 +1,6 @@
 """图形界面（tkinter，Windows 版 Python 自带）。
 
-仿 Dolphin 的存储卡管理器：左右两个插槽各打开一张卡（PCSX2 Folder 卡，或 .ps2 / .vm2
+仿 Dolphin 的存储卡管理器：左右两个插槽各打开一张卡（PCSX2 文件夹卡，或 .ps2 / .vm2
 等镜像卡），可以互相复制，两张卡都打开时自动对比（相同 / 不同 / 仅此卡）。
 """
 
@@ -14,14 +14,16 @@ from .cards import IMAGE_EXTS, open_card
 from .foldercard import looks_like_folder_card
 from .importer import SaveExists
 from .ps2dirent import unpack_time
+from .region import region
 from .saveformats import EXPORT_FORMATS, IMPORT_EXTS, read_save_file
 
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".pcsx2_memcard_manager.json")
 
-COLS = ("name", "size", "modified", "desc", "cmp")
-TITLES = {"name": "Directory", "size": "Size", "modified": "Modified",
+COLS = ("name", "region", "size", "modified", "desc", "cmp")
+TITLES = {"name": "Directory", "region": "Region", "size": "Size", "modified": "Modified",
           "desc": "Description", "cmp": "对比"}
-WIDTHS = {"name": 175, "size": 55, "modified": 115, "desc": 230, "cmp": 55}
+WIDTHS = {"name": 165, "region": 58, "size": 55, "modified": 115, "desc": 150, "cmp": 55}
+REGION_ORDER = {r: i for i, r in enumerate(("Japan", "USA", "Europe", "Asia", "Korea", "China"))}
 CMP_TEXT = {cardops.SAME: "相同", cardops.DIFF: "不同", cardops.ONLY: "仅此卡"}
 CMP_ORDER = {cardops.ONLY: 0, cardops.DIFF: 1, cardops.SAME: 2}
 
@@ -60,7 +62,7 @@ def main():
     from tkinter import filedialog, messagebox, ttk
 
     root = tk.Tk()
-    root.title("PCSX2 Folder 记忆卡管理器")
+    root.title("PS2 记忆卡管理器")
     # 按屏幕大小决定初始尺寸，小屏幕上不要超出
     sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
     w, h = min(1420, sw - 60), min(720, sh - 120)
@@ -80,7 +82,7 @@ def main():
         return messagebox.askyesno(
             "PCSX2 正在运行",
             "检测到 PCSX2 正在运行。\n\n"
-            "PCSX2 运行时会占用 Folder 卡并在退出或换卡时回写，"
+            "PCSX2 运行时会占用文件夹卡并在退出或换卡时回写，"
             "这时修改卡里的存档可能被覆盖、复制不完整，甚至损坏存档。\n\n"
             "建议先关闭 PCSX2 再操作。仍要继续吗？",
             icon="warning", default="no")
@@ -115,8 +117,9 @@ def main():
             self.tree = ttk.Treeview(box, columns=COLS, show="headings", selectmode="extended")
             sb = ttk.Scrollbar(box, orient="vertical", command=self.tree.yview)
             self.tree.configure(yscrollcommand=sb.set)
+            # 滚动条要先 pack，否则列太宽时会被列表挤掉
+            sb.pack(side="right", fill="y")
             self.tree.pack(side="left", fill="both", expand=True)
-            sb.pack(side="left", fill="y")
             for c in COLS:
                 self.tree.heading(c, text=TITLES[c], command=lambda c=c: self.sort_by(c))
                 self.tree.column(c, width=WIDTHS[c], anchor="e" if c == "size" else "w",
@@ -152,7 +155,7 @@ def main():
             return (c if os.path.isdir(c) else os.path.dirname(c)) or None
 
         def pick_folder(self):
-            p = filedialog.askdirectory(title="选择插槽 %s 的 Folder 记忆卡（例如 Folder.ps2）" % self.slot,
+            p = filedialog.askdirectory(title="选择插槽 %s 的文件夹卡（例如 Folder.ps2）" % self.slot,
                                         initialdir=self._initialdir())
             if p:
                 self.path_var.set(os.path.normpath(p))
@@ -190,8 +193,8 @@ def main():
             self.frame.config(text="插槽 %s — %s" % (self.slot, card.kind_label))
             cfg["card_" + self.slot.lower()] = path
             save_config(cfg)
-            self.rows = [(s.display_name, "%dK" % (s.card_size // 1024), s.modified_str,
-                          s.description) for s in self.saves]
+            self.rows = [(s.display_name, region(s.display_name), "%dK" % (s.card_size // 1024),
+                          s.modified_str, s.description) for s in self.saves]
             for i, row in enumerate(self.rows):
                 self.tree.insert("", "end", iid=str(i), values=row + ("",))
             used = sum(s.card_size for s in self.saves) // 1024
@@ -202,7 +205,7 @@ def main():
             self.apply_sort()
             if warn and card.kind == "folder" and not looks_like_folder_card(path):
                 messagebox.showwarning(
-                    "提示", "这个文件夹里没有 _pcsx2_superblock，可能不是 Folder 卡本身。\n"
+                    "提示", "这个文件夹里没有 _pcsx2_superblock，可能不是文件夹卡本身。\n"
                             "应选择类似 memcards/Folder.ps2 这样的文件夹。")
             if compare:
                 refresh_compare()
@@ -226,7 +229,10 @@ def main():
             if col == "modified":
                 return lambda i: unpack_time(self.saves[i].modified)
             if col == "desc":
-                return lambda i: self.rows[i][3].lower()
+                return lambda i: self.rows[i][4].lower()
+            if col == "region":
+                return lambda i: (REGION_ORDER.get(self.rows[i][1], len(REGION_ORDER)),
+                                  self.saves[i].display_name.lower())
             return lambda i: CMP_ORDER.get(self.status.get(self.saves[i].name), 3)
 
         def apply_sort(self):
