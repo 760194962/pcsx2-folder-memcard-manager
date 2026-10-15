@@ -143,7 +143,6 @@ def main():
             self.tree.tag_configure(cardops.DIFF, background="#fff1d6")
             self.tree.tag_configure(cardops.UNREADABLE, foreground="#a33")
             self.tree.bind("<<TreeviewSelect>>", self.on_select)
-            self.tree.bind("<Double-1>", lambda e: self.open_folder())
             self.tree.bind("<Button-3>", self.context_menu)
 
             # 图标预览：选中存档后播放它的 3D 动画图标，可以用鼠标拖动旋转
@@ -186,8 +185,9 @@ def main():
             return self.cardobj is not None
 
         def _initialdir(self):
+            # 从卡所在的文件夹（如 memcards）开始选，文件夹卡也不进到卡里面
             c = self.card
-            return (c if os.path.isdir(c) else os.path.dirname(c)) or None
+            return os.path.dirname(os.path.normpath(c)) if c else None
 
         def pick_folder(self):
             p = filedialog.askdirectory(title="选择插槽 %s 的文件夹卡（例如 Folder.ps2）" % self.slot,

@@ -51,7 +51,7 @@ Two slots side by side, like Dolphin's memory card manager. In each slot click *
 
 - **Compare / 对比**: with both slots open, each save is marked 相同 (same) / 不同 (different) / 仅此卡 (only on this card), compared by file names, order and content (works across card types, e.g. Folder card vs `.vm2`)
 - **Copy / 复制**: 复制到 B → / ← 复制到 A copies the selected saves as-is, including PCSX2 metadata
-- **Import / Export / Delete / Open folder** per slot (buttons under each list, or right-click). Double-click a save to open its folder
+- **Import / Export / Delete / Open folder** per slot (buttons under each list, or right-click)
 - On Folder cards, delete moves saves to the Recycle Bin on Windows; overwriting on copy does the same with the old save. On images, see the `.bak` backup above
 - Copying into an image checks free space first, so a save that doesn't fit is rejected without touching the image
 - Click a column header to sort, again to reverse
