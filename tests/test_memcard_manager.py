@@ -319,6 +319,18 @@ class TestPsu(CardTestCase):
         self.assertEqual(by[b"data:1|2.sav"]["body"], self.sav_a)
         self.assertEqual(by[b"empty.bin"]["size"], 0)
 
+    def test_export_existing_file(self):
+        out = os.path.join(self.tmp, "out")
+        s = self.saves()["BASLUS-20209JEREMY"]
+        p = export_save(s, out)
+        wr(p, b"keep me")
+        with self.assertRaises(FileExistsError):
+            export_save(s, out, overwrite=False)
+        with open(p, "rb") as f:
+            self.assertEqual(f.read(), b"keep me")        # 没有被改写
+        export_save(s, out)                                # 默认覆盖（界面问过之后才会这样调用）
+        self.assertNotEqual(os.path.getsize(p), len(b"keep me"))
+
     def test_name_too_long(self):
         s = self.saves()["BISLPM-66168SAVE"]
         s.files[0].name = b"x" * 40

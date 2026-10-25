@@ -63,9 +63,9 @@ class FolderCard:
         root, files = src.read(save)
         return self.write(root, files, overwrite, recycle)
 
-    def export(self, save, out_dir, fmt):
+    def export(self, save, out_dir, fmt, overwrite=True):
         root, files = self.read(save)
-        return write_save_file(root, files, out_dir, fmt, save.display_name)
+        return write_save_file(root, files, out_dir, fmt, save.display_name, overwrite)
 
     def digests(self, saves):
         """{存档名: 指纹}；读不了的存档（例如文件被 PCSX2 锁住）指纹为 None。"""
@@ -211,9 +211,9 @@ class ImageCard:
         root, files = src.read(save)
         return self.write(root, files, overwrite, recycle)
 
-    def export(self, save, out_dir, fmt):
+    def export(self, save, out_dir, fmt, overwrite=True):
         root, files = self.read(save)
-        return write_save_file(root, files, out_dir, fmt, save.display_name)
+        return write_save_file(root, files, out_dir, fmt, save.display_name, overwrite)
 
     def digests(self, saves):
         out = {}

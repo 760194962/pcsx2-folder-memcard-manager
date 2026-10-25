@@ -16,7 +16,7 @@ from .cards import IMAGE_EXTS, open_card
 from .foldercard import looks_like_folder_card
 from .importer import SaveExists
 from .ps2dirent import unpack_time
-from .saveformats import EXPORT_FORMATS, IMPORT_EXTS, read_save_file
+from .saveformats import EXPORT_FORMATS, IMPORT_EXTS, export_path, read_save_file
 
 try:  # 图标预览需要 numpy；没有也能用其他功能
     from . import iconrender
@@ -403,17 +403,37 @@ def main():
             cfg["out_dir"] = out
             save_config(cfg)
             fmt = fmt_var.get()
+            # 先找出会覆盖的文件，一次性问：覆盖 / 跳过 / 取消
+            exists = [s for s in chosen if os.path.exists(export_path(out, fmt, s.display_name))]
+            skip = set()
+            if exists:
+                names = [os.path.basename(export_path(out, fmt, s.display_name)) for s in exists]
+                listing = "\n".join(names[:12]) + ("\n…（共 %d 个）" % len(names) if len(names) > 12 else "")
+                answer = messagebox.askyesnocancel(
+                    "文件已存在",
+                    "导出文件夹里已有 %d 个同名文件：\n\n%s\n\n"
+                    "是：覆盖这些文件\n否：跳过它们，只导出其余的\n取消：不导出" % (len(names), listing),
+                    icon="warning", default="cancel")
+                if answer is None:
+                    return
+                if answer is False:
+                    skip = {id(s) for s in exists}
             ok, errs = [], []
             busy(True)
             try:
                 for s in chosen:
+                    if id(s) in skip:
+                        continue
                     try:
                         ok.append(self.cardobj.export(s, out, fmt))
                     except Exception as e:  # noqa
                         errs.append("%s: %s" % (s.display_name, e))
             finally:
                 busy(False)
-            report("导出完成", "已导出 %d 个 %s 到:\n%s" % (len(ok), fmt.upper(), out), errs)
+            msg = "已导出 %d 个 %s 到:\n%s" % (len(ok), fmt.upper(), out)
+            if skip:
+                msg += "\n\n跳过了 %d 个已存在的文件。" % len(skip)
+            report("导出完成", msg, errs)
 
         def do_import(self):
             if not self.loaded:

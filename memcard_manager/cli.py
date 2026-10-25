@@ -76,8 +76,11 @@ def cli(args):
     failed = 0
     for s in chosen:
         try:
-            p = card.export(s, args.out, args.format)
+            p = card.export(s, args.out, args.format, overwrite=args.force)
             print("OK  %s -> %s" % (s.display_name, p))
+        except FileExistsError as e:
+            failed += 1
+            print("跳过 %s: %s 已存在（用 --force 覆盖）" % (s.display_name, e), file=sys.stderr)
         except Exception as e:  # noqa
             failed += 1
             print("失败 %s: %s" % (s.display_name, e), file=sys.stderr)
@@ -98,7 +101,8 @@ def main(argv=None):
     ap.add_argument("--all", action="store_true", help="导出全部存档")
     ap.add_argument("-i", "--import", dest="imports", action="append", metavar="FILE",
                     help="把存档导入记忆卡（.psu .max .cbs .sps .xps .psv，可重复）")
-    ap.add_argument("--force", action="store_true", help="导入时覆盖同名存档")
+    ap.add_argument("--force", action="store_true",
+                    help="覆盖已存在的：导入时覆盖同名存档，导出时覆盖同名文件")
     args = ap.parse_args(argv)
 
     if not args.card:

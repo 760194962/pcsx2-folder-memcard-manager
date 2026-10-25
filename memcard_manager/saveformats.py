@@ -109,24 +109,32 @@ def folder_entries(save):
     return root, files
 
 
-def write_save_file(root, files, out_dir, fmt="psu", basename=None):
-    """把 (目录 Entry, [文件 Entry]) 写成 fmt（psu / max），返回输出文件路径。"""
+def export_path(out_dir, fmt, name):
+    """导出文件的完整路径（存档名清理掉 Windows 不允许的字符）。"""
+    return os.path.join(out_dir, safe_filename(name) + "." + fmt)
+
+
+def write_save_file(root, files, out_dir, fmt="psu", basename=None, overwrite=True):
+    """把 (目录 Entry, [文件 Entry]) 写成 fmt（psu / max），返回输出文件路径。
+
+    目标文件已存在且 overwrite=False 时抛 FileExistsError，不写任何东西。"""
     if fmt not in EXPORT_FORMATS:
         raise ValueError("不支持的导出格式: %s" % fmt)
+    out_path = export_path(out_dir, fmt, basename or root.name.decode("utf-8", "replace"))
+    if not overwrite and os.path.exists(out_path):
+        raise FileExistsError(out_path)
     sf = to_save_file(root, files)
     _ensure_stderr()
     os.makedirs(out_dir, exist_ok=True)
-    name = basename or root.name.decode("utf-8", "replace")
-    out_path = os.path.join(out_dir, safe_filename(name) + "." + fmt)
     with open(out_path, "wb") as fp:
         EXPORT_FORMATS[fmt].save(sf, fp)
     return out_path
 
 
-def export_save(save, out_dir, fmt="psu"):
+def export_save(save, out_dir, fmt="psu", overwrite=True):
     """把 foldercard.Save 导出成 fmt（psu / max），返回输出文件路径。"""
     root, files = folder_entries(save)
-    return write_save_file(root, files, out_dir, fmt, save.display_name)
+    return write_save_file(root, files, out_dir, fmt, save.display_name, overwrite)
 
 
 def read_save_file(path):
