@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 from .foldercard import META_PREFIX
+from .i18n import tr
 from .importer import SaveExists
 
 SAME, DIFF, ONLY, UNREADABLE = "same", "diff", "only", "unreadable"
@@ -15,7 +16,7 @@ SAME, DIFF, ONLY, UNREADABLE = "same", "diff", "only", "unreadable"
 def _save_path(card_dir, host_name):
     if (not host_name or host_name in (".", "..") or host_name.startswith(META_PREFIX)
             or os.sep in host_name or (os.altsep and os.altsep in host_name)):
-        raise ValueError("存档名不合法: %r" % host_name)
+        raise ValueError(tr("存档名不合法: %r", host_name))
     return os.path.abspath(os.path.join(card_dir, host_name))
 
 
@@ -37,7 +38,7 @@ def _recycle(path):
                          False, None, None)
     r = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
     if r != 0 or op.fAnyOperationsAborted:
-        raise OSError("移到回收站失败（错误码 %#x）: %s" % (r, path))
+        raise OSError(tr("移到回收站失败（错误码 %#x）: %s", r, path))
 
 
 def can_recycle():
@@ -61,7 +62,7 @@ def delete_save(card_dir, host_name, recycle=True):
     """删除一个存档目录。Windows 上默认移到回收站，其他系统永久删除。"""
     path = _save_path(card_dir, host_name)
     if not os.path.isdir(path):
-        raise FileNotFoundError("找不到存档: %s" % host_name)
+        raise FileNotFoundError(tr("找不到存档: %s", host_name))
     if recycle and can_recycle():
         _recycle(path)
     else:
@@ -76,7 +77,7 @@ def copy_save(src_card, host_name, dst_card, overwrite=False, recycle=True):
     src = _save_path(src_card, host_name)
     dst = _save_path(dst_card, host_name)
     if os.path.normcase(os.path.abspath(src_card)) == os.path.normcase(os.path.abspath(dst_card)):
-        raise ValueError("源和目标是同一张卡")
+        raise ValueError(tr("源和目标是同一张卡"))
     if os.path.exists(dst):
         if not overwrite:
             raise SaveExists(host_name)

@@ -273,6 +273,49 @@ class TestIconSys(unittest.TestCase):
         self.assertEqual(iconsys.description(b"PS2D"), "")
 
 
+class TestI18n(unittest.TestCase):
+    PKG = os.path.join(os.path.dirname(__file__), "..", "memcard_manager")
+    PLACEHOLDER = re.compile(r"%[#0-9.\-]*[sdrx]")
+
+    def tr_literals(self):
+        """包里所有 tr("...") 调用的第一个参数（隐式拼接的字符串字面量也算）。"""
+        import ast
+        found = set()
+        for fn in os.listdir(self.PKG):
+            if not fn.endswith(".py"):
+                continue
+            with open(os.path.join(self.PKG, fn), encoding="utf-8") as f:
+                tree = ast.parse(f.read(), fn)
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id == "tr"):
+                    arg = node.args[0]
+                    self.assertIsInstance(arg, ast.Constant, "%s:%d" % (fn, node.lineno))
+                    found.add(arg.value)
+        return found
+
+    def test_every_text_translated(self):
+        from memcard_manager.i18n import EN
+        used = self.tr_literals()
+        self.assertEqual(sorted(used - set(EN)), [], "缺少英文译文")
+        self.assertEqual(sorted(set(EN) - used), [], "译文表里有没用到的条目")
+        for zh, en in EN.items():
+            self.assertEqual(sorted(self.PLACEHOLDER.findall(zh)),
+                             sorted(self.PLACEHOLDER.findall(en)), zh)
+
+    def test_switch(self):
+        from memcard_manager import i18n
+        old = i18n.LANG
+        try:
+            i18n.set_language("en")
+            self.assertEqual(i18n.tr("插槽 %s", "A"), "Slot A")
+            self.assertEqual(i18n.tr("不在表里的文字"), "不在表里的文字")
+            i18n.set_language("zh")
+            self.assertEqual(i18n.tr("插槽 %s", "A"), "插槽 A")
+        finally:
+            i18n.set_language(old)
+
+
 class TestCard(CardTestCase):
     def test_listing_fields(self):
         s = self.saves()

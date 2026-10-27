@@ -23,6 +23,8 @@ from contextlib import redirect_stdout
 import numpy as np
 from mymcplusplus import ps2icon
 
+from .i18n import tr
+
 ICON_SYS_SIZE = 964
 _FOV = math.radians(55.0)    # 默认视角：比 MyMC++ 的 80° 窄，大小接近 PS2 浏览器；大图标会自动放宽
 _BROWSER_BG = 0.3            # 半透明背景底下的颜色（PS2 浏览器的背景偏深灰）
@@ -59,16 +61,16 @@ class IconModel:
 
     def __init__(self, ico_data, icon_sys=None):
         if not ico_data:
-            raise IconError("没有图标文件")
+            raise IconError(tr("没有图标文件"))
         try:
             with redirect_stdout(io.StringIO()):  # ps2icon 会 print 警告
                 icon = ps2icon.Icon(ico_data)
         except Exception as e:  # noqa
-            raise IconError("图标文件无法解析: %s" % e)
+            raise IconError(tr("图标文件无法解析: %s", e))
         n = icon.vertex_count - icon.vertex_count % 3
         s = icon.animation_shapes
         if n == 0 or s == 0 or icon.vertex_data is None:
-            raise IconError("图标里没有模型")
+            raise IconError(tr("图标里没有模型"))
         flip = np.array([1.0, -1.0, -1.0], dtype=np.float32)
 
         verts = np.frombuffer(bytes(icon.vertex_data), dtype="<i2")

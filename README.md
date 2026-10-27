@@ -46,11 +46,13 @@ pip install mymcplusplus numpy
 python -m memcard_manager
 ```
 
-Two slots side by side, like Dolphin's memory card manager. In each slot click **文件夹卡…** and pick a Folder card directory (e.g. `.../PCSX2/memcards/Folder.ps2`, the one containing `_pcsx2_superblock`), or **镜像卡…** and pick a `.ps2` / `.vm2` file. The last opened cards are reopened on start.
+Two slots side by side, like Dolphin's memory card manager. In each slot click **Folder card…** and pick a Folder card directory (e.g. `.../PCSX2/memcards/Folder.ps2`, the one containing `_pcsx2_superblock`), or **Card image…** and pick a `.ps2` / `.vm2` file. The last opened cards are reopened on start.
 左右两个插槽，仿 Dolphin 的存储卡管理器；每个插槽可以打开文件夹卡或镜像卡，启动时自动打开上次用过的卡。
 
-- **Compare / 对比**: with both slots open, each save is marked 相同 (same) / 不同 (different) / 仅此卡 (only on this card), compared by file names, order and content (works across card types, e.g. Folder card vs `.vm2`)
-- **Copy / 复制**: 复制到 B → / ← 复制到 A copies the selected saves as-is, including PCSX2 metadata
+- **Language / 语言**: English or Chinese, picked from the system language (Chinese if either the Windows display language or the region format is Chinese). Change it in the 语言 / Language menu; it applies after a restart
+  界面有中文和英文，默认跟随系统；可以在“语言 / Language”菜单里切换，重启后生效
+- **Compare / 对比**: with both slots open, each save is marked Same / Different / Only here, compared by file names, order and content (works across card types, e.g. Folder card vs `.vm2`)
+- **Copy / 复制**: Copy to B → / ← Copy to A copies the selected saves as-is, including PCSX2 metadata
 - **Import / Export / Delete / Open folder** per slot (buttons under each list, or right-click)
 - On Folder cards, delete moves saves to the Recycle Bin on Windows; overwriting on copy does the same with the old save. On images, see the `.bak` backup above
 - Copying into an image checks free space first, so a save that doesn't fit is rejected without touching the image

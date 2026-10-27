@@ -15,6 +15,7 @@ import os
 import struct
 
 from . import iconsys
+from .i18n import tr
 from .ps2dirent import (DEFAULT_DIR_MODE, DEFAULT_FILE_MODE, ENTRY_SIZE,
                   format_time, pack_time)
 from .yamlmini import parse_index
@@ -165,7 +166,7 @@ def read_save(card_dir, host_name):
 
 def list_saves(card_dir):
     if not os.path.isdir(card_dir):
-        raise FileNotFoundError("找不到文件夹: %s" % card_dir)
+        raise FileNotFoundError(tr("找不到文件夹: %s", card_dir))
     saves = []
     for host_name in sorted(os.listdir(card_dir)):
         p = os.path.join(card_dir, host_name)

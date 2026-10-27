@@ -4,6 +4,8 @@ import re
 import struct
 import time
 
+from .i18n import tr
+
 ENTRY_SIZE = 512
 
 # 与 PCSX2 MemoryCardFileEntry 的默认值一致
@@ -37,7 +39,7 @@ def format_time(b):
 
 def pack_entry(mode, size, created, modified, name, attr=0):
     if len(name) > 31:
-        raise ValueError("名字超过 31 字节: %r" % (name,))
+        raise ValueError(tr("名字超过 31 字节: %r", name))
     b = bytearray(ENTRY_SIZE)
     struct.pack_into("<II", b, 0, mode, size)
     b[8:16] = created

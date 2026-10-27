@@ -12,6 +12,7 @@ from mymcplusplus import ps2mc_dir
 from mymcplusplus.save import format_ems, format_max_drive, ps2save
 
 from . import iconsys
+from .i18n import tr
 from .ps2dirent import safe_filename
 
 EXPORT_FORMATS = {"psu": format_ems, "max": format_max_drive}
@@ -41,7 +42,7 @@ def _from_mymc(ent, data=b""):
 
 def _to_mymc(mode, size, created, modified, attr, name):
     if len(name) > 31:
-        raise ValueError("名字超过 31 字节: %r" % (name,))
+        raise ValueError(tr("名字超过 31 字节: %r", name))
     return [mode & 0xFFFF, mode >> 16, size, _TOD.unpack(created),
             0, 0, _TOD.unpack(modified), attr, name]
 
@@ -94,7 +95,7 @@ def from_save_file(sf):
     root.size = len(files) + 2  # 卡上目录项的大小包含 "." 和 ".."
     for f in files:
         if not ps2mc_dir.mode_is_file(f.mode & 0xFFFF):
-            raise ValueError("存档里含有子目录，不支持: %s" % f.name.decode("utf-8", "replace"))
+            raise ValueError(tr("存档里含有子目录，不支持: %s", f.name.decode("utf-8", "replace")))
     return root, files
 
 
@@ -119,7 +120,7 @@ def write_save_file(root, files, out_dir, fmt="psu", basename=None, overwrite=Tr
 
     目标文件已存在且 overwrite=False 时抛 FileExistsError，不写任何东西。"""
     if fmt not in EXPORT_FORMATS:
-        raise ValueError("不支持的导出格式: %s" % fmt)
+        raise ValueError(tr("不支持的导出格式: %s", fmt))
     out_path = export_path(out_dir, fmt, basename or root.name.decode("utf-8", "replace"))
     if not overwrite and os.path.exists(out_path):
         raise FileExistsError(out_path)
@@ -143,7 +144,7 @@ def read_save_file(path):
     with open(path, "rb") as fp:
         fmt = ps2save.poll_format(fp)
         if fmt is None:
-            raise ValueError("无法识别的存档格式")
+            raise ValueError(tr("无法识别的存档格式"))
         fp.seek(0)
         sf = ps2save.PS2SaveFile()
         try:

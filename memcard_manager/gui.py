@@ -4,16 +4,17 @@
 等镜像卡），可以互相复制，两张卡都打开时自动对比（相同 / 不同 / 仅此卡）。
 """
 
-import json
 import math
 import os
 import subprocess
 import sys
 import time
 
-from . import cardops
+from . import cardops, i18n
 from .cards import IMAGE_EXTS, open_card
+from .config import load_config, save_config
 from .foldercard import looks_like_folder_card
+from .i18n import tr
 from .importer import SaveExists
 from .ps2dirent import unpack_time
 from .saveformats import EXPORT_FORMATS, IMPORT_EXTS, export_path, read_save_file
@@ -32,32 +33,23 @@ ICON_FRAME_MS = 8           # 尽量接近 60 帧/秒（Windows 计时器精度�
 # 自动旋转：PS2 浏览器实测每秒 30°、12 秒一圈，方向是 左侧面 → 背面 → 右侧面 → 正面
 ICON_SPIN = -math.radians(30.0)   # 弧度/秒
 
-CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".pcsx2_memcard_manager.json")
-
 COLS = ("name", "size", "modified", "desc", "cmp")
 TITLES = {"name": "Directory", "size": "Size", "modified": "Modified",
-          "desc": "Description", "cmp": "对比"}
-WIDTHS = {"name": 175, "size": 55, "modified": 115, "desc": 160, "cmp": 55}
-CMP_TEXT = {cardops.SAME: "相同", cardops.DIFF: "不同", cardops.ONLY: "仅此卡",
-            cardops.UNREADABLE: "无法读取"}
+          "desc": "Description", "cmp": tr("对比")}
+WIDTHS = {"name": 175, "size": 55, "modified": 115, "desc": 160, "cmp": 70}
+CMP_TEXT = {cardops.SAME: tr("相同"), cardops.DIFF: tr("不同"), cardops.ONLY: tr("仅此卡"),
+            cardops.UNREADABLE: tr("无法读取")}
 CMP_ORDER = {cardops.ONLY: 0, cardops.DIFF: 1, cardops.UNREADABLE: 2, cardops.SAME: 3}
+# 语言菜单：(设置值, 显示名)；菜单本身中英并列，选错了也认得出来
+LANGUAGE_CHOICES = (("auto", "跟随系统 / System"), ("zh", "中文"), ("en", "English"))
 
 
-def load_config():
-    try:
-        with open(CONFIG_PATH, encoding="utf-8") as f:
-            cfg = json.load(f)
-        return cfg if isinstance(cfg, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def save_config(cfg):
-    try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=1)
-    except OSError:
-        pass
+def listing(names, limit=12):
+    """对话框里列出的名字，太多时只列前几个。"""
+    text = "\n".join(names[:limit])
+    if len(names) > limit:
+        text += tr("\n…（共 %d 个）", len(names))
+    return text
 
 
 def open_in_explorer(path, select=False):
@@ -77,7 +69,7 @@ def main():
     from tkinter import filedialog, messagebox, ttk
 
     root = tk.Tk()
-    root.title("PS2 记忆卡管理器")
+    root.title(tr("PS2 记忆卡管理器"))
     # 按屏幕大小决定初始尺寸，小屏幕上不要超出
     sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
     w, h = min(1420, sw - 60), min(720, sh - 120)
@@ -95,17 +87,17 @@ def main():
         if not cardops.pcsx2_running():
             return True
         return messagebox.askyesno(
-            "PCSX2 正在运行",
-            "检测到 PCSX2 正在运行。\n\n"
-            "PCSX2 运行时会占用文件夹卡并在退出或换卡时回写，"
-            "这时修改卡里的存档可能被覆盖、复制不完整，甚至损坏存档。\n\n"
-            "建议先关闭 PCSX2 再操作。仍要继续吗？",
+            tr("PCSX2 正在运行"),
+            tr("检测到 PCSX2 正在运行。\n\n"
+               "PCSX2 运行时会占用文件夹卡并在退出或换卡时回写，"
+               "这时修改卡里的存档可能被覆盖、复制不完整，甚至损坏存档。\n\n"
+               "建议先关闭 PCSX2 再操作。仍要继续吗？"),
             icon="warning", default="no")
 
     def report(title, ok_msg, errs):
         msg = ok_msg
         if errs:
-            msg += "\n\n失败:\n" + "\n".join(errs)
+            msg += tr("\n\n失败:\n") + "\n".join(errs)
         (messagebox.showwarning if errs else messagebox.showinfo)(title, msg)
 
     class CardPane:
@@ -119,13 +111,13 @@ def main():
             self.sort_col, self.sort_rev = None, False
             self.path_var = tk.StringVar()
 
-            self.frame = ttk.LabelFrame(parent, text="插槽 " + slot, padding=6)
+            self.frame = ttk.LabelFrame(parent, text=tr("插槽 %s", slot), padding=6)
             top = ttk.Frame(self.frame)
             top.pack(fill="x")
             ttk.Entry(top, textvariable=self.path_var).pack(side="left", fill="x", expand=True)
-            ttk.Button(top, text="文件夹卡…", command=self.pick_folder).pack(side="left", padx=(6, 0))
-            ttk.Button(top, text="镜像卡…", command=self.pick_image).pack(side="left", padx=(6, 0))
-            ttk.Button(top, text="刷新", command=lambda: self.load()).pack(side="left", padx=(6, 0))
+            ttk.Button(top, text=tr("文件夹卡…"), command=self.pick_folder).pack(side="left", padx=(6, 0))
+            ttk.Button(top, text=tr("镜像卡…"), command=self.pick_image).pack(side="left", padx=(6, 0))
+            ttk.Button(top, text=tr("刷新"), command=lambda: self.load()).pack(side="left", padx=(6, 0))
 
             box = ttk.Frame(self.frame)
             box.pack(fill="both", expand=True, pady=6)
@@ -164,14 +156,14 @@ def main():
             self._photo = None
             self.show_icon(None)
 
-            self.info = ttk.Label(self.frame, text="未打开")
+            self.info = ttk.Label(self.frame, text=tr("未打开"))
             self.info.pack(fill="x")
             bar = ttk.Frame(self.frame)
             bar.pack(fill="x", pady=(6, 0))
-            self.btn_import = ttk.Button(bar, text="导入…", command=self.do_import)
-            self.btn_export = ttk.Button(bar, text="导出…", command=self.do_export)
-            self.btn_delete = ttk.Button(bar, text="删除", command=self.do_delete)
-            self.btn_folder = ttk.Button(bar, text="打开文件夹", command=self.open_folder)
+            self.btn_import = ttk.Button(bar, text=tr("导入…"), command=self.do_import)
+            self.btn_export = ttk.Button(bar, text=tr("导出…"), command=self.do_export)
+            self.btn_delete = ttk.Button(bar, text=tr("删除"), command=self.do_delete)
+            self.btn_folder = ttk.Button(bar, text=tr("打开文件夹"), command=self.open_folder)
             for b in (self.btn_import, self.btn_export, self.btn_delete, self.btn_folder):
                 b.pack(side="left", padx=(0, 6))
 
@@ -190,7 +182,7 @@ def main():
             return os.path.dirname(os.path.normpath(c)) if c else None
 
         def pick_folder(self):
-            p = filedialog.askdirectory(title="选择插槽 %s 的文件夹卡（例如 Folder.ps2）" % self.slot,
+            p = filedialog.askdirectory(title=tr("选择插槽 %s 的文件夹卡（例如 Folder.ps2）", self.slot),
                                         initialdir=self._initialdir())
             if p:
                 self.path_var.set(os.path.normpath(p))
@@ -198,8 +190,8 @@ def main():
 
         def pick_image(self):
             p = filedialog.askopenfilename(
-                title="选择插槽 %s 的记忆卡镜像" % self.slot, initialdir=self._initialdir(),
-                filetypes=[("PS2 记忆卡镜像", " ".join(IMAGE_EXTS)), ("所有文件", "*.*")])
+                title=tr("选择插槽 %s 的记忆卡镜像", self.slot), initialdir=self._initialdir(),
+                filetypes=[(tr("PS2 记忆卡镜像"), " ".join(IMAGE_EXTS)), (tr("所有文件"), "*.*")])
             if p:
                 self.path_var.set(os.path.normpath(p))
                 self.load(warn=True)
@@ -210,9 +202,9 @@ def main():
             self.icon_cache = {}
             self.show_icon(None)
             self.tree.delete(*self.tree.get_children())
-            self.frame.config(text="插槽 " + self.slot)
+            self.frame.config(text=tr("插槽 %s", self.slot))
             if not path:
-                self.info.config(text="未打开")
+                self.info.config(text=tr("未打开"))
                 update_buttons()
                 return
             try:
@@ -220,14 +212,15 @@ def main():
                 self.saves = card.list_saves()
                 self.cardobj = card
             except Exception as e:  # noqa
-                self.info.config(text="读取失败: %s" % e)
+                self.info.config(text=tr("读取失败: %s", e))
                 if warn:
-                    messagebox.showerror("读取失败", str(e))
+                    messagebox.showerror(tr("读取失败"), str(e))
                 if compare:
                     refresh_compare()
                 update_buttons()
                 return
-            self.frame.config(text="插槽 %s — %s" % (self.slot, card.kind_label))
+            kind = tr("文件夹卡") if card.kind == "folder" else tr("镜像卡")
+            self.frame.config(text=tr("插槽 %s — %s", self.slot, kind))
             cfg["card_" + self.slot.lower()] = path
             save_config(cfg)
             self.rows = [(s.display_name, "%dK" % (s.card_size // 1024), s.modified_str,
@@ -235,16 +228,16 @@ def main():
             for i, row in enumerate(self.rows):
                 self.tree.insert("", "end", iid=str(i), values=row + ("",))
             used = sum(s.card_size for s in self.saves) // 1024
-            text = "%d 个存档，已用 %dK" % (len(self.saves), used)
+            text = tr("%d 个存档，已用 %dK", len(self.saves), used)
             if card.free is not None:
-                text += "，剩余 %dK" % (card.free // 1024)
+                text += tr("，剩余 %dK", card.free // 1024)
             self.info_text = text
             self.info.config(text=text)
             self.apply_sort()
             if warn and card.kind == "folder" and not looks_like_folder_card(path):
                 messagebox.showwarning(
-                    "提示", "这个文件夹里没有 _pcsx2_superblock，可能不是文件夹卡本身。\n"
-                            "应选择类似 memcards/Folder.ps2 这样的文件夹。")
+                    tr("提示"), tr("这个文件夹里没有 _pcsx2_superblock，可能不是文件夹卡本身。\n"
+                                   "应选择类似 memcards/Folder.ps2 这样的文件夹。"))
             if compare:
                 refresh_compare()
             update_buttons()
@@ -270,7 +263,7 @@ def main():
             if model is None:
                 try:
                     if iconrender is None:
-                        raise IconError("需要 numpy 才能预览图标（pip install numpy）")
+                        raise IconError(tr("需要 numpy 才能预览图标（pip install numpy）"))
                     icon_sys, ico = self.cardobj.read_icon(save)
                     model = IconModel(ico, icon_sys)
                 except Exception as e:  # noqa
@@ -282,20 +275,20 @@ def main():
             if save is None:
                 self.icon_model = None
                 self._set_photo(None)
-                self.preview_info.config(text="选中存档即可预览它的 3D 图标" if self.loaded else "")
+                self.preview_info.config(text=tr("选中存档即可预览它的 3D 图标") if self.loaded else "")
                 return
-            lines = [save.description or "（无标题）", save.display_name,
+            lines = [save.description or tr("（无标题）"), save.display_name,
                      "%s　%dK" % (save.modified_str, save.card_size // 1024)]
             if isinstance(model, str):
                 self.icon_model = None
                 self._set_photo(None)
-                lines.append("图标: " + model)
+                lines.append(tr("图标: %s", model))
             else:
                 self.icon_model = model
                 self.icon_start = time.time()
                 self.yaw_offset = 0.0
                 if model.animated:
-                    lines.append("动画图标")
+                    lines.append(tr("动画图标"))
                 self.render_icon()
             self.preview_info.config(text="\n".join(lines))
 
@@ -316,7 +309,8 @@ def main():
                 self._set_photo(m.render(PREVIEW_SIZE, seconds=t, yaw=yaw))
             except Exception as e:  # noqa
                 self.icon_model = None
-                self.preview_info.config(text=self.preview_info.cget("text") + "\n图标渲染失败: %s" % e)
+                self.preview_info.config(text=self.preview_info.cget("text") + "\n"
+                                         + tr("图标渲染失败: %s", e))
 
         def _drag_start(self, event):
             self._drag_x = event.x
@@ -334,7 +328,7 @@ def main():
                                                             cardops.UNREADABLE) else ())
             bad = sum(1 for st in status.values() if st == cardops.UNREADABLE)
             if bad and not note:
-                note = "%d 个存档无法读取，没能对比（文件可能被 PCSX2 占用）" % bad
+                note = tr("%d 个存档无法读取，没能对比（文件可能被 PCSX2 占用）", bad)
             if self.loaded:
                 self.info.config(text=self.info_text + ("　｜　" + note if note else ""))
             if self.sort_col == "cmp":
@@ -394,9 +388,9 @@ def main():
         def do_export(self):
             chosen = self.selected()
             if not chosen:
-                messagebox.showinfo("提示", "请先在插槽 %s 的列表中选择存档。" % self.slot)
+                messagebox.showinfo(tr("提示"), tr("请先在插槽 %s 的列表中选择存档。", self.slot))
                 return
-            out = filedialog.askdirectory(title="选择导出文件夹（格式: %s）" % fmt_var.get().upper(),
+            out = filedialog.askdirectory(title=tr("选择导出文件夹（格式: %s）", fmt_var.get().upper()),
                                           initialdir=cfg.get("out_dir") or None)
             if not out:
                 return
@@ -408,11 +402,11 @@ def main():
             skip = set()
             if exists:
                 names = [os.path.basename(export_path(out, fmt, s.display_name)) for s in exists]
-                listing = "\n".join(names[:12]) + ("\n…（共 %d 个）" % len(names) if len(names) > 12 else "")
                 answer = messagebox.askyesnocancel(
-                    "文件已存在",
-                    "导出文件夹里已有 %d 个同名文件：\n\n%s\n\n"
-                    "是：覆盖这些文件\n否：跳过它们，只导出其余的\n取消：不导出" % (len(names), listing),
+                    tr("文件已存在"),
+                    tr("导出文件夹里已有 %d 个同名文件：\n\n%s\n\n"
+                       "是：覆盖这些文件\n否：跳过它们，只导出其余的\n取消：不导出",
+                       len(names), listing(names)),
                     icon="warning", default="cancel")
                 if answer is None:
                     return
@@ -430,19 +424,19 @@ def main():
                         errs.append("%s: %s" % (s.display_name, e))
             finally:
                 busy(False)
-            msg = "已导出 %d 个 %s 到:\n%s" % (len(ok), fmt.upper(), out)
+            msg = tr("已导出 %d 个 %s 到:\n%s", len(ok), fmt.upper(), out)
             if skip:
-                msg += "\n\n跳过了 %d 个已存在的文件。" % len(skip)
-            report("导出完成", msg, errs)
+                msg += tr("\n\n跳过了 %d 个已存在的文件。", len(skip))
+            report(tr("导出完成"), msg, errs)
 
         def do_import(self):
             if not self.loaded:
-                messagebox.showinfo("提示", "请先打开插槽 %s 的记忆卡。" % self.slot)
+                messagebox.showinfo(tr("提示"), tr("请先打开插槽 %s 的记忆卡。", self.slot))
                 return
             paths = filedialog.askopenfilenames(
-                title="选择要导入到插槽 %s 的存档" % self.slot,
+                title=tr("选择要导入到插槽 %s 的存档", self.slot),
                 initialdir=cfg.get("import_dir") or None,
-                filetypes=[("PS2 存档", " ".join(IMPORT_EXTS)), ("所有文件", "*.*")])
+                filetypes=[(tr("PS2 存档"), " ".join(IMPORT_EXTS)), (tr("所有文件"), "*.*")])
             if not paths or not confirm_pcsx2_closed():
                 return
             cfg["import_dir"] = os.path.dirname(paths[0])
@@ -456,8 +450,8 @@ def main():
                             ok.append(self.cardobj.write(root_ent, files))
                         except SaveExists as e:
                             busy(False)
-                            if messagebox.askyesno("存档已存在", "插槽 %s 里已有存档 %s，要覆盖吗？"
-                                                   % (self.slot, e)):
+                            if messagebox.askyesno(tr("存档已存在"),
+                                                   tr("插槽 %s 里已有存档 %s，要覆盖吗？", self.slot, e)):
                                 busy(True)
                                 ok.append(self.cardobj.write(root_ent, files, overwrite=True))
                     except Exception as e:  # noqa
@@ -466,20 +460,21 @@ def main():
                 busy(False)
             self.load()
             self.select_names(set(ok))
-            report("导入完成", "已导入 %d 个存档到插槽 %s。" % (len(ok), self.slot), errs)
+            report(tr("导入完成"), tr("已导入 %d 个存档到插槽 %s。", len(ok), self.slot), errs)
 
         def do_delete(self):
             chosen = self.selected()
             if not chosen:
                 return
-            names = [s.display_name for s in chosen]
-            listing = "\n".join(names[:12]) + ("\n…（共 %d 个）" % len(names) if len(names) > 12 else "")
+            names = listing([s.display_name for s in chosen])
             if self.cardobj.kind == "image":
-                where = "删除（首次修改前会把整张卡备份为 .bak）"
+                question = tr("要从插槽 %s 删除以下存档吗？（首次修改前会把整张卡备份为 .bak）\n\n%s",
+                              self.slot, names)
+            elif cardops.can_recycle():
+                question = tr("要把插槽 %s 的以下存档移到回收站吗？\n\n%s", self.slot, names)
             else:
-                where = "移到回收站" if cardops.can_recycle() else "永久删除（无法恢复）"
-            if not messagebox.askyesno("删除存档", "要从插槽 %s %s以下存档吗？\n\n%s"
-                                       % (self.slot, where, listing), icon="warning"):
+                question = tr("要从插槽 %s 永久删除以下存档吗？（无法恢复）\n\n%s", self.slot, names)
+            if not messagebox.askyesno(tr("删除存档"), question, icon="warning"):
                 return
             if not confirm_pcsx2_closed():
                 return
@@ -495,7 +490,7 @@ def main():
                 busy(False)
             self.load()
             if errs:
-                report("删除", "部分存档删除失败。", errs)
+                report(tr("删除"), tr("部分存档删除失败。"), errs)
 
         def copy_to_other(self):
             dst = self.other
@@ -512,12 +507,16 @@ def main():
                         except SaveExists:
                             busy(False)
                             if dst.cardobj.kind == "image":
-                                old = "被替换（整张卡已备份为 .bak）"
+                                question = tr("插槽 %s 里已有存档 %s，要覆盖吗？\n"
+                                              "（旧存档会被替换，整张卡已备份为 .bak）",
+                                              dst.slot, s.display_name)
+                            elif cardops.can_recycle():
+                                question = tr("插槽 %s 里已有存档 %s，要覆盖吗？\n（旧存档会移到回收站）",
+                                              dst.slot, s.display_name)
                             else:
-                                old = "移到回收站" if cardops.can_recycle() else "被删除"
-                            if messagebox.askyesno(
-                                    "存档已存在", "插槽 %s 里已有存档 %s，要覆盖吗？\n（旧存档会%s）"
-                                    % (dst.slot, s.display_name, old)):
+                                question = tr("插槽 %s 里已有存档 %s，要覆盖吗？\n（旧存档会被删除）",
+                                              dst.slot, s.display_name)
+                            if messagebox.askyesno(tr("存档已存在"), question):
                                 busy(True)
                                 ok.append(dst.cardobj.copy_from(self.cardobj, s, overwrite=True))
                     except Exception as e:  # noqa
@@ -527,7 +526,7 @@ def main():
             dst.load()
             dst.select_names(set(ok))
             if errs:
-                report("复制", "已复制 %d 个存档到插槽 %s。" % (len(ok), dst.slot), errs)
+                report(tr("复制"), tr("已复制 %d 个存档到插槽 %s。", len(ok), dst.slot), errs)
 
         def context_menu(self, event):
             iid = self.tree.identify_row(event.y)
@@ -536,15 +535,30 @@ def main():
             has = bool(self.tree.selection())
             m = tk.Menu(self.tree, tearoff=False)
             st = "normal" if has else "disabled"
-            m.add_command(label="打开存档文件夹" if self.cardobj and self.cardobj.kind == "folder"
-                          else "在资源管理器中显示镜像", command=self.open_folder,
+            m.add_command(label=tr("打开存档文件夹") if self.cardobj and self.cardobj.kind == "folder"
+                          else tr("在资源管理器中显示镜像"), command=self.open_folder,
                           state=st if self.loaded else "disabled")
-            m.add_command(label="复制到插槽 %s" % self.other.slot, command=self.copy_to_other,
+            m.add_command(label=tr("复制到插槽 %s", self.other.slot), command=self.copy_to_other,
                           state=st if self.other.loaded else "disabled")
-            m.add_command(label="导出…", command=self.do_export, state=st)
+            m.add_command(label=tr("导出…"), command=self.do_export, state=st)
             m.add_separator()
-            m.add_command(label="删除", command=self.do_delete, state=st)
+            m.add_command(label=tr("删除"), command=self.do_delete, state=st)
             m.tk_popup(event.x_root, event.y_root)
+
+    # ---- 菜单：语言 ----
+    lang_var = tk.StringVar(value=i18n.configured_language() or "auto")
+
+    def on_language():
+        cfg["language"] = lang_var.get()
+        save_config(cfg)
+        messagebox.showinfo("语言 / Language", "重新启动程序后生效。\nRestart the program to apply.")
+
+    menubar = tk.Menu(root)
+    lang_menu = tk.Menu(menubar, tearoff=False)
+    for value, label in LANGUAGE_CHOICES:
+        lang_menu.add_radiobutton(label=label, value=value, variable=lang_var, command=on_language)
+    menubar.add_cascade(label="语言 / Language", menu=lang_menu)
+    root.config(menu=menubar)
 
     # ---- 布局：插槽 A | 中间按钮 | 插槽 B ----
     body = ttk.Frame(root, padding=8)
@@ -560,12 +574,12 @@ def main():
 
     mid = ttk.Frame(body, padding=(8, 0))
     mid.grid(row=0, column=1)
-    btn_a2b = ttk.Button(mid, text="复制到 B →", width=14, command=pane_a.copy_to_other)
-    btn_b2a = ttk.Button(mid, text="← 复制到 A", width=14, command=pane_b.copy_to_other)
+    btn_a2b = ttk.Button(mid, text=tr("复制到 B →"), width=14, command=pane_a.copy_to_other)
+    btn_b2a = ttk.Button(mid, text=tr("← 复制到 A"), width=14, command=pane_b.copy_to_other)
     btn_a2b.pack(pady=4)
     btn_b2a.pack(pady=4)
     ttk.Separator(mid).pack(fill="x", pady=12)
-    ttk.Label(mid, text="导出格式").pack()
+    ttk.Label(mid, text=tr("导出格式")).pack()
     fmt_var = tk.StringVar(value=cfg.get("fmt") if cfg.get("fmt") in EXPORT_FORMATS else "psu")
     fmt_box = ttk.Combobox(mid, textvariable=fmt_var, values=list(EXPORT_FORMATS),
                            state="readonly", width=6)
@@ -579,7 +593,7 @@ def main():
     legend = ttk.Frame(mid)
     legend.pack(pady=(16, 0))
     for st, color in ((cardops.ONLY, "#e3f4e6"), (cardops.DIFF, "#fff1d6")):
-        tk.Label(legend, text=CMP_TEXT[st], bg=color, width=8).pack(pady=2)
+        tk.Label(legend, text=CMP_TEXT[st], bg=color, width=10).pack(pady=2)
 
     def refresh_compare():
         note = ""
@@ -589,7 +603,7 @@ def main():
                                              pane_b.cardobj.digests(pane_b.saves))
             except Exception as e:  # noqa
                 st_a, st_b = {}, {}
-                note = "对比失败: %s" % e
+                note = tr("对比失败: %s", e)
         else:
             st_a = st_b = {}
         pane_a.set_status(st_a, note)

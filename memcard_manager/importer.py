@@ -11,6 +11,7 @@ import re
 import shutil
 
 from .foldercard import META_PREFIX
+from .i18n import tr
 from .ps2dirent import pack_entry, unpack_time
 from .saveformats import read_save_file
 
@@ -64,15 +65,15 @@ def write_folder_save(root, files, card_dir, overwrite=False, remove_existing=sh
     """
     save_host = host_name(root.name)
     if save_host.startswith(META_PREFIX):
-        raise ValueError("存档名不合法: %s" % _decode(root.name))
+        raise ValueError(tr("存档名不合法: %s", _decode(root.name)))
 
     seen = {}
     for f in files:
         h = host_name(f.name)
         if h.startswith(META_PREFIX):
-            raise ValueError("文件名不合法: %s" % _decode(f.name))
+            raise ValueError(tr("文件名不合法: %s", _decode(f.name)))
         if h.lower() in seen:
-            raise ValueError("清理非法字符后文件名冲突: %s / %s" % (seen[h.lower()], _decode(f.name)))
+            raise ValueError(tr("清理非法字符后文件名冲突: %s / %s", seen[h.lower()], _decode(f.name)))
         seen[h.lower()] = _decode(f.name)
         f.host = h
 

@@ -17,6 +17,7 @@ from mymcplusplus import ps2mc, ps2mc_dir
 
 from . import cardops, iconsys
 from .foldercard import list_saves as _list_folder_saves
+from .i18n import tr
 from .importer import SaveExists, write_folder_save
 from .ps2dirent import ENTRY_SIZE, format_time
 from .saveformats import folder_entries, from_save_file, to_save_file, write_save_file
@@ -31,12 +32,11 @@ def open_card(path):
         return FolderCard(path)
     if os.path.isfile(path):
         return ImageCard(path)
-    raise FileNotFoundError("找不到记忆卡: %s" % path)
+    raise FileNotFoundError(tr("找不到记忆卡: %s", path))
 
 
 class FolderCard:
     kind = "folder"
-    kind_label = "文件夹卡"
 
     def __init__(self, path):
         self.path = path
@@ -115,7 +115,6 @@ class ImageSave:
 
 class ImageCard:
     kind = "image"
-    kind_label = "镜像卡"
 
     def __init__(self, path):
         self.path = path
@@ -140,7 +139,7 @@ class ImageCard:
                 with redirect_stdout(io.StringIO()):
                     mc = ps2mc.ps2mc(f)
             except ps2mc.error as e:
-                raise ValueError("不是可识别的 PS2 记忆卡镜像（加密的 .vme/.vm2 不支持）: %s" % e)
+                raise ValueError(tr("不是可识别的 PS2 记忆卡镜像（加密的 .vme/.vm2 不支持）: %s", e))
             yield mc
         finally:
             if mc is not None:
@@ -183,7 +182,7 @@ class ImageCard:
         try:
             name = root.name.decode("ascii")
         except UnicodeDecodeError:
-            raise ValueError("镜像卡只支持 ASCII 存档名: %r" % root.name)
+            raise ValueError(tr("镜像卡只支持 ASCII 存档名: %r", root.name))
         sf = to_save_file(root, files)
         with self._mc(write=True) as mc:
             path = self._path(name)
@@ -195,7 +194,7 @@ class ImageCard:
             need += sum(-(-len(f.data) // cl) * cl for f in files)
             free = mc.get_free_space() + (mc.dir_size(path) if exists else 0)
             if need > free:
-                raise ValueError("镜像卡空间不足：需要 %dK，可用 %dK" % (need // 1024, free // 1024))
+                raise ValueError(tr("镜像卡空间不足：需要 %dK，可用 %dK", need // 1024, free // 1024))
             if exists:
                 mc.rmdir(path)
             mc.import_save_file(sf, False)
@@ -207,7 +206,7 @@ class ImageCard:
 
     def copy_from(self, src, save, overwrite=False, recycle=True):
         if os.path.normcase(os.path.abspath(src.path)) == os.path.normcase(os.path.abspath(self.path)):
-            raise ValueError("源和目标是同一张卡")
+            raise ValueError(tr("源和目标是同一张卡"))
         root, files = src.read(save)
         return self.write(root, files, overwrite, recycle)
 
