@@ -1,4 +1,4 @@
-# PCSX2 Folder Memcard Manager
+# PCSX2 Memcard Manager
 
 Unofficial tool to browse **PCSX2 Folder memory cards** and **memory card images** (PCSX2 `.ps2`, PS3 `.vm2`, …), copy saves between them, and import/export saves (`.psu`, `.max`, …).
 
