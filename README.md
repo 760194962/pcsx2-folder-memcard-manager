@@ -40,7 +40,7 @@ Requires Python 3.8+, MyMC++ and numpy (numpy is only needed for the icon previe
 pip install mymcplusplus numpy
 ```
 
-**GUI / 图形界面** — on Windows double-click `启动.bat` (finds Python, installs `mymcplusplus` and `numpy` if missing, then opens the GUI). Or double-click `run_gui.pyw`, or:
+**GUI / 图形界面** — on Windows double-click `Run.bat` (finds Python, installs `mymcplusplus` and `numpy` if missing, then opens the GUI). Or double-click `run_gui.pyw`, or:
 
 ```
 python -m memcard_manager
